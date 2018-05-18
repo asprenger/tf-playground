@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 import argparse
 import sys
+import shutil
 import tempfile
 import numpy as np
 import tensorflow as tf
@@ -30,18 +31,39 @@ class TrainHook(tf.train.SessionRunHook):
     '''Print training steps, for debugging'''
     def __init__(self):
         self.count = 0
+    def after_create_session(self, session, coord):
+      print('Train Session created.')
     def before_run(self, run_context):
         self.count += 1
         print('Train step %d' % self.count)
+    def end(self, session):
+      print('End train Session')    
 
 class EvalHook(tf.train.SessionRunHook):
     '''Print eval steps, for debugging'''
     def __init__(self):
         self.count = 0
+    def after_create_session(self, session, coord):
+      print('Eval Session created.')    
     def before_run(self, run_context):
         self.count += 1
         print('Eval step %d' % self.count)
+    def end(self, session):
+      print('End eval Session')    
+
     
+class MyExporter(tf.estimator.Exporter):
+    def __init__(self):
+        self._name = 'foo'
+    @property
+    def name(self):
+        return self._name
+    def export(self, estimator, export_path, checkpoint_path, eval_result, is_the_final_export):
+        print('EVAL RESULT', eval_result)
+
+
+def delete_dir(path):
+    shutil.rmtree(path, ignore_errors=True)
 
 def network(x):
 
@@ -129,28 +151,41 @@ def model_fn(features, labels, mode, params):
         eval_metric_ops=eval_metric_ops)
 
 
+# TODO How can we implement this pattern:
+# train n epochs
+# evaluate
+# train n epochs
+# evaluate
+# ...
+
 def main(_):
+
+    delete_dir(FLAGS.model_dir)
 
     print('Loading dataset')
     mnist = input_data.read_data_sets(FLAGS.data_dir)
-    print('%d train images' % mnist.train.num_examples)
-    print('%d test images' % mnist.test.num_examples)
+
+    x_train = mnist.train.images #[0:1000]
+    y_train = mnist.train.labels #[0:1000]
+    x_test = mnist.test.images #[0:100]
+    y_test = mnist.test.labels #[0:100]
+
+    print('%d train images' % x_train.shape[0])
+    print('%d test images' % x_test.shape[0])
     
-    epochs = 5
-    batch_size = 10
-    
-    train_max_steps = (100 // batch_size) * epochs
+    batch_size = 64
+    train_max_steps = 500
     
     train_input_fn = tf.estimator.inputs.numpy_input_fn(
-        x={"x": mnist.train.images[0:100]},
-        y=mnist.train.labels[0:100].astype(np.int32), 
-        num_epochs=None, # cycle forever over the examples
+        x={"x": x_train},
+        y=y_train.astype(np.int32), 
+        num_epochs=1, # train model for one epoch 
         batch_size=batch_size,
         shuffle=True)
 
     eval_input_fn = tf.estimator.inputs.numpy_input_fn(
-        x={"x": mnist.test.images[0:20]},
-        y=mnist.test.labels[0:20].astype(np.int32), 
+        x={"x": x_test},
+        y=y_test.astype(np.int32), 
         num_epochs=1,
         batch_size=batch_size,
         shuffle=False)
@@ -164,6 +199,7 @@ def main(_):
     eval_spec = tf.estimator.EvalSpec(
         input_fn=eval_input_fn,
         steps=None, # evaluates until input_fn raises an EOF exception
+        exporters=[MyExporter()],
         hooks=[EvalHook()]
     )
 
@@ -176,7 +212,7 @@ def main(_):
     # on EOF and this setting makes sure there is exactly one iteration over the eval data.
     
     model_params = {"learning_rate": 1e-4}
-    estimator = tf.estimator.Estimator(model_fn=model_fn, params=model_params)
+    estimator = tf.estimator.Estimator(model_fn=model_fn, model_dir=FLAGS.model_dir, params=model_params)
 
     tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)
 
@@ -186,5 +222,8 @@ if __name__ == '__main__':
     parser.add_argument('--data_dir', type=str,
                       default='/tmp/tensorflow/mnist/input_data',
                       help='Directory for storing input data')
+    parser.add_argument('--model_dir', type=str,
+                  default='/tmp/tensorflow/mnist/model',
+                  help='Directory for storing model checkpoints')
     FLAGS, unparsed = parser.parse_known_args()
     tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
