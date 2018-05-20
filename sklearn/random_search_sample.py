@@ -6,9 +6,10 @@ from sklearn.grid_search import RandomizedSearchCV
 #from sklearn.model_selection import RandomizedSearchCV
 from sklearn.base import BaseEstimator
 
-def generate_validation_split(nb_examples, val_split = 0.2):
+def generate_validation_split(nb_examples, val_split = 0.2, shuffle=True):
     indices = np.arange(nb_examples) # indices = (0,...,len(data) - 1)
-    np.random.shuffle(indices)
+    if shuffle:
+        np.random.shuffle(indices)
     cutoff_index = int(nb_examples * val_split)
     val_indices = indices[:cutoff_index]
     train_indices = indices[cutoff_index:]
@@ -58,7 +59,8 @@ validator = RandomizedSearchCV(estimator,
                          # see http://scikit-learn.org/stable/modules/model_evaluation.html#common-cases-predefined-values
                          #scoring='accuracy', 
                          verbose=0,
-                         cv=cross_val_split,
+                         #cv=cross_val_split,
+                         cv=2,
                          n_jobs=1)
 
 validator.fit(x_train, y_train)

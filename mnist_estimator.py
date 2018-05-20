@@ -53,6 +53,8 @@ def get_all_variables_with_name(var_name):
 
 def network(x):
 
+    print('Model')
+
     x_image = tf.reshape(x, [-1, 28, 28, 1])
 
     with tf.variable_scope("model"):
