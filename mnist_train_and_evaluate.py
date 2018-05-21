@@ -1,4 +1,3 @@
-
 '''A MNIST classifier that calls tf.estimator.train_and_evaluate()'''
 
 # This implementation creates a `tf.estimator.Estimator`, train_spec and eval_spec and 
