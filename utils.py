@@ -3,6 +3,21 @@ import inspect
 import datetime
 import random
 
+def filter_params(fn, params):
+    """Filters `params` and returns those in `fn`'s arguments.
+    # Arguments
+        fn : arbitrary function
+    # Returns
+        res : dictionary containing variables
+            in both `sk_params` and `fn`'s arguments.
+    """
+    res = {}
+    for name, value in params.items():
+        if has_arg(fn, name):
+            res.update({name: value})
+    return res
+
+
 def has_arg(fn, name, accept_all=False):
     """Checks if a callable accepts a given keyword argument.
     For Python 2, checks if there is an argument with the given name.

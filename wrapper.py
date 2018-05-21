@@ -1,7 +1,6 @@
 import random
 import copy
 import numpy as np
-import keras
 from keras.datasets import mnist
 from sklearn.grid_search import RandomizedSearchCV
 #from sklearn.model_selection import RandomizedSearchCV
@@ -86,45 +85,41 @@ def build_model(features, labels, mode, params):
 
 
 
-def build_estimator(hidden_size=128, learning_rate=1e-4):
-    print('Estimator(hidden_size=%d)' % hidden_size)
-    model_params = {
-        'hidden_size':hidden_size,
-        'learning_rate': learning_rate
-    }
-    return tf.estimator.Estimator(model_fn=build_model, params=model_params)
+# TODO should we get rid of this method?
+def build_estimator(**params):
+    print('Estimator(%s)' % str(params))
+    return tf.estimator.Estimator(model_fn=build_model, params=params)
     
-
-
-
-
-
-
 
 class MyWrapper(object):
     '''Implementation of the scikit-learn classifier API for a TensorFlow Estimator.'''
 
-    def __init__(self, build_fn, **sk_params):
+    def __init__(self, build_fn, train_hooks=None, eval_hooks=None, predict_hooks=None, **params):
         self.build_fn = build_fn
-        self.sk_params = sk_params
+        self.params = params
+        self.train_hooks = train_hooks
+        self.eval_hooks = eval_hooks
+        self.predict_hooks = predict_hooks
         self.estimator = None
-        # TODO self.check_params(sk_params)
 
     def get_params(self, **params):
-        res = copy.deepcopy(self.sk_params)
+        res = copy.deepcopy(self.params)
         res.update({'build_fn': self.build_fn})
+        res.update({'train_hooks': self.train_hooks})
+        res.update({'eval_hooks': self.eval_hooks})
+        res.update({'predict_hooks': self.predict_hooks})
         return res
 
     def set_params(self, **params):
-        # TODO self.check_params(params)
-        self.sk_params.update(params)
+        self.params.update(params)
         return self
 
     def fit(self, X_train, y_train):
-        print('\nfit(X_train=%s, y_train=%s, sk_params=%s)' % (str(X_train.shape), str(y_train.shape), str(self.sk_params)))
-        self.estimator = self.build_fn(**self.filter_sk_params(self.build_fn))
+        print('\nfit(X_train=%s, y_train=%s, params=%s)' % (str(X_train.shape), str(y_train.shape), str(self.params)))
 
-        batch_size = self.sk_params['batch_size']
+        self.estimator = self.build_fn(**self.params)
+
+        batch_size = self.params['batch_size']
         train_steps = 100
 
         train_input_fn = tf.estimator.inputs.numpy_input_fn(
@@ -134,19 +129,17 @@ class MyWrapper(object):
             batch_size=batch_size,
             shuffle=True)
         
-        self.estimator.train(input_fn=train_input_fn, steps=train_steps)  
+        self.estimator.train(input_fn=train_input_fn, steps=train_steps, hooks=self.train_hooks)
         # other parameter: hooks, max_steps, saving_listeners
 
 
-
     def score(self, X_test, y_test):
-        # called if 'RandomizedSearchCV(scoring=None)'
-        print('score(x_test=%s, y_test=%s, sk_params=%s)' % (str(X_test.shape), str(y_test.shape), str(self.sk_params)))
+        print('score(x_test=%s, y_test=%s, params=%s)' % (str(X_test.shape), str(y_test.shape), str(self.params)))
 
         if not self.estimator:
-            raise ValueError('First call fit() to train an estimator.')
+            raise ValueError('First call fit() to train a model.')
 
-        batch_size = self.sk_params['batch_size']
+        batch_size = self.params['batch_size'] # TODO special handling
         test_input_fn = tf.estimator.inputs.numpy_input_fn(
             x={"x": X_test},
             y=y_test, 
@@ -154,48 +147,40 @@ class MyWrapper(object):
             batch_size=batch_size,
             shuffle=False)
 
-        ev = self.estimator.evaluate(input_fn=test_input_fn)
+        ev = self.estimator.evaluate(input_fn=test_input_fn, hooks=self.eval_hooks)
         # other parameters: steps. hooks, checkpoint_path, name
 
-        score = ev['accuracy']
+        score = ev['accuracy'] # TODO configure
         print('Eval accuracy: %f' % score)
         return score
 
+
     def predict(self, X):
-        print('predict(x=%s, sk_params=%s)' % (str(X.shape), str(self.sk_params)))
+        print('predict(x=%s, params=%s)' % (str(X.shape), str(self.params)))
 
         if not self.estimator:
-            raise ValueError('First call fit() to train an estimator.')
+            raise ValueError('First call fit() to train a model.')
 
         predict_input_fn = tf.estimator.inputs.numpy_input_fn(
             x={"x": X},
             num_epochs=1,
             shuffle=False)
 
-        predictions = self.estimator.predict(input_fn=predict_input_fn)
-        return np.array([p['pred'] for p in predictions])
-
-    def filter_sk_params(self, fn):
-        """Filters `sk_params` and returns those in `fn`'s arguments.
-        # Arguments
-            fn : arbitrary function
-        # Returns
-            res : dictionary containing variables
-                in both `sk_params` and `fn`'s arguments.
-        """
-        res = {}
-        for name, value in self.sk_params.items():
-            if has_arg(fn, name):
-                res.update({name: value})
-        return res
+        predictions = self.estimator.predict(input_fn=predict_input_fn, hooks=self.predict_hooks)
+        return np.array([p['pred'] for p in predictions]) # TODO configure
 
 
-
-
-
-
-
-
+class TrainHook(tf.train.SessionRunHook):
+    '''Print training steps, for debugging'''
+    def __init__(self):
+        self.count = 0
+    def after_create_session(self, session, coord):
+      print('Train Session created.')
+    def before_run(self, run_context):
+        self.count += 1
+        print('Train step %d' % self.count)
+    def end(self, session):
+      print('End train Session')    
 
 
 def main():
@@ -215,12 +200,17 @@ def main():
     }
     sampling_iterations = 3
 
-    wrapper = MyWrapper(build_fn=build_estimator, hidden_size=None)
+    wrapper = MyWrapper(build_fn=build_estimator)
 
     # Note: RandomizedSearchCV splits up the train data according to a cross-validation 
     # strategy specified by the 'cv' parameter. The final evaluation is performed on the
     # test data. Sklearn implements several cross validation generators:
     # http://scikit-learn.org/stable/modules/cross_validation.html
+
+    # Note: If the RandomizedSearchCV.scoring property is set the cross-validation strategy
+    # calls Estimator.predict with the validation data set and calculates the eval score with
+    # the specified scoring strategy. Otherwise the Estimator must implement the evaluation 
+    # scoring and the cross-validation strategy calls Estimator.score().
 
     validator = RandomizedSearchCV(wrapper,
                              param_distributions=param_distributions,
@@ -251,9 +241,7 @@ def main():
         print("Test loss: %s" % ev["loss"])
         print("Test accuracy: %s" % ev["accuracy"])
 
-
-        
-
+        # Use the best model to do some predictions
         predict_input_fn = tf.estimator.inputs.numpy_input_fn(
             x={"x": x_test[0:10]},
             num_epochs=1,
