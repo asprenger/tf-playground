@@ -1,5 +1,5 @@
 import os
-import random
+import shutil
 import copy
 import uuid
 import numpy as np
@@ -10,7 +10,7 @@ from sklearn.base import BaseEstimator
 from utils import has_arg, ts_rand, dict_to_str
 import tensorflow as tf
 import tensorflow.contrib.layers as layers
-import shutil
+
 
 
 class MetricsExporter(tf.estimator.Exporter):
@@ -96,18 +96,12 @@ def build_model(features, labels, mode, params):
         loss=loss,
         train_op=train_op,
         eval_metric_ops=eval_metric_ops)
-
-
-
-# TODO should we get rid of this method?
-#def build_estimator(**params):
-#    print('Estimator(%s)' % str(params))
-#    return tf.estimator.Estimator(model_fn=build_model, params=params)
     
 
 class MyWrapper(object):
     '''Implementation of the scikit-learn classifier API for a TensorFlow Estimator.'''
 
+    # TODO remove predict_hooks
     def __init__(self, build_fn, train_epochs=1, model_base_dir=None, train_hooks=None, eval_hooks=None, predict_hooks=None, **params):
         self.build_fn = build_fn
         self.train_epochs = train_epochs

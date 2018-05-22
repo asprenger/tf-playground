@@ -5,7 +5,9 @@ A prototype for hyperparameter search with TensorFlow.
  * Non-distributed training only
 """
 
-import random
+import os
+import uuid
+import shutil
 import copy
 import numpy as np
 from keras.datasets import mnist
@@ -91,19 +93,13 @@ def build_model(features, labels, mode, params):
         eval_metric_ops=eval_metric_ops)
 
 
-
-# TODO should we get rid of this method?
-def build_estimator(**params):
-    print('Estimator(%s)' % str(params))
-    return tf.estimator.Estimator(model_fn=build_model, params=params)
-    
-
 class MyWrapper(object):
     '''Implementation of the scikit-learn classifier API for a TensorFlow Estimator.'''
 
-    def __init__(self, build_fn, train_epochs=1, train_hooks=None, eval_hooks=None, predict_hooks=None, **params):
+    def __init__(self, build_fn, train_epochs=1, model_base_dir=None, train_hooks=None, eval_hooks=None, predict_hooks=None, **params):
         self.build_fn = build_fn
         self.train_epochs = train_epochs
+        self.model_base_dir = model_base_dir
         self.train_hooks = train_hooks
         self.eval_hooks = eval_hooks
         self.predict_hooks = predict_hooks
@@ -114,6 +110,7 @@ class MyWrapper(object):
         result = copy.deepcopy(self.params)
         result.update({'build_fn': self.build_fn})
         result.update({'train_epochs': self.train_epochs})
+        result.update({'model_base_dir': self.model_base_dir})
         result.update({'train_hooks': self.train_hooks})
         result.update({'eval_hooks': self.eval_hooks})
         result.update({'predict_hooks': self.predict_hooks})
@@ -123,17 +120,23 @@ class MyWrapper(object):
         self.params.update(params)
         return self
 
-    def fit(self, X_train, y_train):
-        print('\nfit(X_train=%s, y_train=%s, params=%s)' % (str(X_train.shape), str(y_train.shape), str(self.params)))
+    def fit(self, X, y):
+        print('\nfit(X=%s, y=%s, params=%s)' % (str(X.shape), str(y.shape), str(self.params)))
 
         assert 'batch_size' in self.params, "Parameters must contain a 'batch_size'"
 
-        self.estimator = self.build_fn(**self.params)
+        model_dir = None
+        if self.model_base_dir:
+            model_dir = os.path.join(self.model_base_dir, str(uuid.uuid1()))
+
+        print('Estimator(model_dir=%s, params=%s)' % (model_dir, str(self.params)))
+        self.estimator = tf.estimator.Estimator(model_fn=self.build_fn, model_dir=model_dir, params=self.params)
+
         batch_size = self.params['batch_size']
 
         train_input_fn = tf.estimator.inputs.numpy_input_fn(
-            x={"x": X_train},
-            y=y_train,
+            x={"x": X},
+            y=y,
             num_epochs=self.train_epochs,
             batch_size=batch_size,
             shuffle=True)
@@ -143,8 +146,8 @@ class MyWrapper(object):
         
 
 
-    def score(self, X_test, y_test):
-        print('score(x_test=%s, y_test=%s, params=%s)' % (str(X_test.shape), str(y_test.shape), str(self.params)))
+    def score(self, X, y):
+        print('score(X=%s, y=%s, params=%s)' % (str(X.shape), str(y.shape), str(self.params)))
 
         if not self.estimator:
             raise ValueError('First call fit() to train a model.')
@@ -153,23 +156,22 @@ class MyWrapper(object):
 
         batch_size = self.params['batch_size'] 
         test_input_fn = tf.estimator.inputs.numpy_input_fn(
-            x={"x": X_test},
-            y=y_test, 
+            x={"x": X},
+            y=y, 
             num_epochs=1,
             batch_size=batch_size,
             shuffle=False)
 
-        # TODO rename 'ev' to 'metrics'
-        ev = self.estimator.evaluate(input_fn=test_input_fn, hooks=self.eval_hooks)
+        metrics = self.estimator.evaluate(input_fn=test_input_fn, hooks=self.eval_hooks)
         # other parameters: steps. hooks, checkpoint_path, name
 
-        score = ev['accuracy'] # TODO configure
+        score = metrics['accuracy'] # TODO configure
         print('Eval accuracy: %f' % score)
         return score
 
 
     def predict(self, X):
-        print('predict(x=%s, params=%s)' % (str(X.shape), str(self.params)))
+        print('predict(X=%s, params=%s)' % (str(X.shape), str(self.params)))
 
         if not self.estimator:
             raise ValueError('First call fit() to train a model.')
@@ -184,6 +186,9 @@ class MyWrapper(object):
 
 
 def main():
+
+    model_base_dir = '/tmp/mnist_model'
+    shutil.rmtree(model_base_dir, ignore_errors=True)
 
     (x_train, y_train), (x_test, y_test) = mnist.load_data()
     x_train = x_train.astype('float32')
@@ -203,7 +208,7 @@ def main():
     }
     sampling_iterations = 3 # TODO
 
-    wrapper = MyWrapper(build_fn=build_estimator) #, batch_size=64)
+    wrapper = MyWrapper(build_fn=build_model, model_base_dir=model_base_dir)
 
     # Note: RandomizedSearchCV splits up the train data according to a cross-validation 
     # strategy specified by the 'cv' parameter. The final evaluation is performed on the
@@ -232,6 +237,7 @@ def main():
     if hasattr(validator, 'best_estimator_'):
         # attribute exists if the cross-validation strategy has refitted the model
         best_estimator = validator.best_estimator_.estimator
+        os.symlink(best_estimator.model_dir, os.path.join(model_base_dir, 'best_model'))
         print('Final model path: %s' % best_estimator.model_dir)
 
         # Evaluate the best model on the test dataset
