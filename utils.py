@@ -62,3 +62,8 @@ def ts_rand():
 
 def dict_to_str(d):
     return ','.join(str(k)+'='+str(v) for k, v in d.items())
+
+def ensure_dir(path):
+    if not os.path.exists(path):
+        os.makedirs(path)
+

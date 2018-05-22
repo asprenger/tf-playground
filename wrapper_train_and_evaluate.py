@@ -10,6 +10,8 @@ from sklearn.base import BaseEstimator
 from utils import has_arg, ts_rand, dict_to_str
 import tensorflow as tf
 import tensorflow.contrib.layers as layers
+import shutil
+
 
 class MetricsExporter(tf.estimator.Exporter):
     def __init__(self):
@@ -98,17 +100,18 @@ def build_model(features, labels, mode, params):
 
 
 # TODO should we get rid of this method?
-def build_estimator(**params):
-    print('Estimator(%s)' % str(params))
-    return tf.estimator.Estimator(model_fn=build_model, params=params)
+#def build_estimator(**params):
+#    print('Estimator(%s)' % str(params))
+#    return tf.estimator.Estimator(model_fn=build_model, params=params)
     
 
 class MyWrapper(object):
     '''Implementation of the scikit-learn classifier API for a TensorFlow Estimator.'''
 
-    def __init__(self, build_fn, train_epochs=1, train_hooks=None, eval_hooks=None, predict_hooks=None, **params):
+    def __init__(self, build_fn, train_epochs=1, model_base_dir=None, train_hooks=None, eval_hooks=None, predict_hooks=None, **params):
         self.build_fn = build_fn
         self.train_epochs = train_epochs
+        self.model_base_dir = model_base_dir
         self.train_hooks = train_hooks
         self.eval_hooks = eval_hooks
         self.predict_hooks = predict_hooks
@@ -119,6 +122,7 @@ class MyWrapper(object):
         result = copy.deepcopy(self.params)
         result.update({'build_fn': self.build_fn})
         result.update({'train_epochs': self.train_epochs})
+        result.update({'model_base_dir': self.model_base_dir})
         result.update({'train_hooks': self.train_hooks})
         result.update({'eval_hooks': self.eval_hooks})
         result.update({'predict_hooks': self.predict_hooks})
@@ -166,7 +170,14 @@ class MyWrapper(object):
             exporters=[metrics_exporter]
         )
 
-        self.estimator = self.build_fn(**self.params)
+        model_dir = None
+        if self.model_base_dir:
+            model_dir = os.path.join(self.model_base_dir, str(uuid.uuid1()))
+
+        print('Estimator(model_dir=%s, params=%s)' % (model_dir, str(self.params)))
+        self.estimator = tf.estimator.Estimator(model_fn=self.build_fn, model_dir=model_dir, params=self.params)
+
+        #self.estimator = self.build_fn(**self.params)
         tf.estimator.train_and_evaluate(self.estimator, train_spec, eval_spec)
 
         accuracy = metrics_exporter.eval_result['accuracy']
@@ -175,6 +186,9 @@ class MyWrapper(object):
 
 
 def main():
+
+    model_base_dir = '/tmp/mnist_model'
+    shutil.rmtree(model_base_dir, ignore_errors=True)
 
     (x_train, y_train), (x_test, y_test) = mnist.load_data()
     x_train = x_train.astype('float32')
@@ -194,7 +208,9 @@ def main():
     }
     sampling_iterations = 3 # TODO
 
-    wrapper = MyWrapper(build_fn=build_estimator) #, batch_size=64)
+    model_base_dir = None
+
+    wrapper = MyWrapper(build_fn=build_model, model_base_dir=model_base_dir)
 
     # Note: RandomizedSearchCV splits up the train data according to a cross-validation 
     # strategy specified by the 'cv' parameter. The final evaluation is performed on the
@@ -219,6 +235,7 @@ def main():
 
     print('\nBest params: %s' % str(validator.best_params_))
     print('Best eval score: %f' % validator.best_score_)
+
 
 if __name__ == '__main__':
     main()
