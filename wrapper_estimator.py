@@ -10,13 +10,13 @@ import uuid
 import shutil
 import copy
 import numpy as np
-from keras.datasets import mnist
 from sklearn.grid_search import RandomizedSearchCV
 #from sklearn.model_selection import RandomizedSearchCV
 from sklearn.base import BaseEstimator
 from utils import has_arg, ts_rand, dict_to_str
 import tensorflow as tf
 import tensorflow.contrib.layers as layers
+from tensorflow.examples.tutorials.mnist import input_data
 
 
 
@@ -96,8 +96,9 @@ def build_model(features, labels, mode, params):
 class MyWrapper(object):
     '''Implementation of the scikit-learn classifier API for a TensorFlow Estimator.'''
 
-    def __init__(self, build_fn, train_epochs=1, model_base_dir=None, train_hooks=None, eval_hooks=None, predict_hooks=None, **params):
+    def __init__(self, build_fn, eval_metric_name='accuracy', train_epochs=1, model_base_dir=None, train_hooks=None, eval_hooks=None, predict_hooks=None, **params):
         self.build_fn = build_fn
+        self.eval_metric_name = eval_metric_name
         self.train_epochs = train_epochs
         self.model_base_dir = model_base_dir
         self.train_hooks = train_hooks
@@ -109,6 +110,7 @@ class MyWrapper(object):
     def get_params(self, **params):
         result = copy.deepcopy(self.params)
         result.update({'build_fn': self.build_fn})
+        result.update({'eval_metric_name': self.eval_metric_name})
         result.update({'train_epochs': self.train_epochs})
         result.update({'model_base_dir': self.model_base_dir})
         result.update({'train_hooks': self.train_hooks})
@@ -124,6 +126,7 @@ class MyWrapper(object):
         print('\nfit(X=%s, y=%s, params=%s)' % (str(X.shape), str(y.shape), str(self.params)))
 
         assert 'batch_size' in self.params, "Parameters must contain a 'batch_size'"
+        batch_size = self.params['batch_size']
 
         model_dir = None
         if self.model_base_dir:
@@ -131,8 +134,6 @@ class MyWrapper(object):
 
         print('Estimator(model_dir=%s, params=%s)' % (model_dir, str(self.params)))
         self.estimator = tf.estimator.Estimator(model_fn=self.build_fn, model_dir=model_dir, params=self.params)
-
-        batch_size = self.params['batch_size']
 
         train_input_fn = tf.estimator.inputs.numpy_input_fn(
             x={"x": X},
@@ -153,8 +154,8 @@ class MyWrapper(object):
             raise ValueError('First call fit() to train a model.')
 
         assert 'batch_size' in self.params, "Parameters must contain a 'batch_size'"
-
         batch_size = self.params['batch_size'] 
+
         test_input_fn = tf.estimator.inputs.numpy_input_fn(
             x={"x": X},
             y=y, 
@@ -163,9 +164,7 @@ class MyWrapper(object):
             shuffle=False)
 
         metrics = self.estimator.evaluate(input_fn=test_input_fn, hooks=self.eval_hooks)
-        # other parameters: steps. hooks, checkpoint_path, name
-
-        score = metrics['accuracy'] # TODO configure
+        score = metrics[self.eval_metric_name]
         print('Eval accuracy: %f' % score)
         return score
 
@@ -190,13 +189,11 @@ def main():
     model_base_dir = '/tmp/mnist_model'
     shutil.rmtree(model_base_dir, ignore_errors=True)
 
-    (x_train, y_train), (x_test, y_test) = mnist.load_data()
-    x_train = x_train.astype('float32')
-    y_train = y_train.astype('int32')
-    x_test = x_test.astype('float32')
-    y_test = y_test.astype('int32')
-    x_train /= 255
-    x_test /= 255
+    mnist = input_data.read_data_sets('/tmp/mnist_model/mnist')
+    x_train = mnist.train.images
+    y_train = mnist.train.labels.astype('int32')
+    x_test = mnist.test.images
+    y_test = mnist.test.labels.astype('int32')
 
     # Single parameters that are not part of the parameter search can be passed added
     # to 'param_distributions' or passed as named parameters to the wrapper.

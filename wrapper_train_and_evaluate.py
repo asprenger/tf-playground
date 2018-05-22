@@ -3,13 +3,13 @@ import shutil
 import copy
 import uuid
 import numpy as np
-from keras.datasets import mnist
 from sklearn.grid_search import RandomizedSearchCV
 #from sklearn.model_selection import RandomizedSearchCV
 from sklearn.base import BaseEstimator
 from utils import has_arg, ts_rand, dict_to_str
 import tensorflow as tf
 import tensorflow.contrib.layers as layers
+from tensorflow.examples.tutorials.mnist import input_data
 
 
 
@@ -23,8 +23,6 @@ class MetricsExporter(tf.estimator.Exporter):
     def export(self, estimator, export_path, checkpoint_path, eval_result, is_the_final_export):
         self.eval_result = eval_result
         
-
-
 def build_network(x, hidden_size):
     print('Model(x=%s, hidden_size=%d)' % (x.shape, hidden_size))
     with tf.variable_scope("model"):
@@ -101,25 +99,24 @@ def build_model(features, labels, mode, params):
 class MyWrapper(object):
     '''Implementation of the scikit-learn classifier API for a TensorFlow Estimator.'''
 
-    # TODO remove predict_hooks
-    def __init__(self, build_fn, train_epochs=1, model_base_dir=None, train_hooks=None, eval_hooks=None, predict_hooks=None, **params):
+    def __init__(self, build_fn, eval_metric_name='accuracy', train_epochs=1, model_base_dir=None, train_hooks=None, eval_hooks=None, **params):
         self.build_fn = build_fn
+        self.eval_metric_name = eval_metric_name
         self.train_epochs = train_epochs
         self.model_base_dir = model_base_dir
         self.train_hooks = train_hooks
         self.eval_hooks = eval_hooks
-        self.predict_hooks = predict_hooks
         self.params = params
         self.estimator = None
 
     def get_params(self, **params):
         result = copy.deepcopy(self.params)
         result.update({'build_fn': self.build_fn})
+        result.update({'eval_metric_name': self.eval_metric_name})
         result.update({'train_epochs': self.train_epochs})
         result.update({'model_base_dir': self.model_base_dir})
         result.update({'train_hooks': self.train_hooks})
         result.update({'eval_hooks': self.eval_hooks})
-        result.update({'predict_hooks': self.predict_hooks})
         return result
 
     def set_params(self, **params):
@@ -170,11 +167,9 @@ class MyWrapper(object):
 
         print('Estimator(model_dir=%s, params=%s)' % (model_dir, str(self.params)))
         self.estimator = tf.estimator.Estimator(model_fn=self.build_fn, model_dir=model_dir, params=self.params)
-
-        #self.estimator = self.build_fn(**self.params)
         tf.estimator.train_and_evaluate(self.estimator, train_spec, eval_spec)
 
-        accuracy = metrics_exporter.eval_result['accuracy']
+        accuracy = metrics_exporter.eval_result[self.eval_metric_name]
         print('Eval accuracy: %f' % accuracy)
         return accuracy
 
@@ -184,13 +179,11 @@ def main():
     model_base_dir = '/tmp/mnist_model'
     shutil.rmtree(model_base_dir, ignore_errors=True)
 
-    (x_train, y_train), (x_test, y_test) = mnist.load_data()
-    x_train = x_train.astype('float32')
-    y_train = y_train.astype('int32')
-    x_test = x_test.astype('float32')
-    y_test = y_test.astype('int32')
-    x_train /= 255
-    x_test /= 255
+    mnist = input_data.read_data_sets('/tmp/mnist_model/mnist')
+    x_train = mnist.train.images
+    y_train = mnist.train.labels.astype('int32')
+    x_test = mnist.test.images
+    y_test = mnist.test.labels.astype('int32')
 
     # Single parameters that are not part of the parameter search can be passed added
     # to 'param_distributions' or passed as named parameters to the wrapper.
@@ -201,8 +194,6 @@ def main():
         'learning_rate': [1e-2, 1e-3, 1e-4],
     }
     sampling_iterations = 3 # TODO
-
-    model_base_dir = None
 
     wrapper = MyWrapper(build_fn=build_model, model_base_dir=model_base_dir)
 
