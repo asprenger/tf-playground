@@ -4,6 +4,7 @@ import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.layers as layers
 from tensorflow.examples.tutorials.mnist import input_data
+import dataset
 
 class TrainHook(tf.train.SessionRunHook):
     '''Print training steps, for debugging'''
@@ -78,7 +79,12 @@ def build_model(x, hidden_size):
 def model_fn(features, labels, mode, params):
     '''Model function for Estimator.'''
 
-    logits = build_model(features["x"], params['hidden_size'])
+    if isinstance(features, dict):
+        x = features['x'] # used if input is read from Numpy arrays
+    else:
+        x = features # used if input is read from a Dataset    
+
+    logits = build_model(x, params['hidden_size'])
 
     predictions = tf.argmax(logits, axis=1, output_type=tf.int32)
 
@@ -105,35 +111,46 @@ def model_fn(features, labels, mode, params):
 
 def main():
 
-    mnist = input_data.read_data_sets('/tmp/tensorflow/mnist')
-    print('%d train images' % mnist.train.num_examples)
-    print('%d test images' % mnist.test.num_examples)
+    batch_size = 128
+    data_dir = '/tmp/tensorflow/mnist'
+    use_dataset = True
 
-    batch_size = 64
+    if use_dataset:
+        # Use `tf.data.Dataset` to read train and eval data. 
+        def train_input_fn():
+            ds = dataset.train(data_dir)
+            ds = ds.cache().shuffle(buffer_size=5000).batch(batch_size)
+            ds = ds.repeat(1)
+            return ds
 
-    train_input_fn = tf.estimator.inputs.numpy_input_fn(
-        x={"x": mnist.train.images},
-        y=mnist.train.labels.astype(np.int32), 
-        num_epochs=None, # cycle forever over the examples
-        batch_size=batch_size,
-        shuffle=True)
+        def eval_input_fn():
+            return dataset.test(data_dir).batch(batch_size)
 
-    test_input_fn = tf.estimator.inputs.numpy_input_fn(
-        x={"x": mnist.test.images},
-        y=mnist.test.labels.astype(np.int32), 
-        num_epochs=1,
-        batch_size=batch_size,
-        shuffle=False)
-
+    else:
+        # Use `numpy_input_fn()` to read train and evaluation data
+        # from Numpy arrays.
+        mnist = input_data.read_data_sets('/tmp/tensorflow/mnist')
+        train_input_fn = tf.estimator.inputs.numpy_input_fn(
+            x={"x": mnist.train.images},
+            y=mnist.train.labels.astype(np.int32), 
+            num_epochs=1,
+            batch_size=batch_size,
+            shuffle=True)    
+        eval_input_fn = tf.estimator.inputs.numpy_input_fn(
+            x={"x": mnist.test.images},
+            y=mnist.test.labels.astype(np.int32), 
+            num_epochs=1,
+            batch_size=batch_size,
+            shuffle=False)
+        
     model_params = {'learning_rate': 1e-4, 'hidden_size': 512}
     estimator = tf.estimator.Estimator(model_fn=model_fn, params=model_params)
 
     # train model
-    train_steps = 100
-    estimator.train(input_fn=train_input_fn, steps=train_steps, hooks=[TrainHook()]) 
+    estimator.train(input_fn=train_input_fn, hooks=[TrainHook()]) 
 
     # evaluate model
-    ev = estimator.evaluate(input_fn=test_input_fn, hooks=[EvaluationHook()])
+    ev = estimator.evaluate(input_fn=eval_input_fn, hooks=[EvaluationHook()])
     print('Loss: %s' % ev['loss'])
     print('Eval accuracy: %s' % ev['accuracy'])
 
