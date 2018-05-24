@@ -1,3 +1,6 @@
+"""A MNIST classifier using the TensorFlow Estimator API."""
+
+# Shows how to read data using tf.data.Dataset or alternative numpy_input_fn()
 
 import types
 import numpy as np

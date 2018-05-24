@@ -173,6 +173,7 @@ class MyWrapper(object):
         print('Eval accuracy: %f' % accuracy)
         return accuracy
 
+        # TODO def predict(self, X):
 
 def main():
 
@@ -213,10 +214,19 @@ def main():
                              verbose=0,
                              cv=[[np.arange(20000), np.arange(10000)]],
                              refit=False,
-                             #scoring='accuracy', 
+                             scoring='accuracy', 
                              n_jobs=1)
 
     validator.fit(x_train, y_train)
+
+    # train_and_evaluate() encapsulates model training and evaluation. Because of this we must 
+    # call the method from Wrapper.score() and Wrapper.train() is a noop. This leads to the 
+    # following restrictions:
+    # 1. automatic refit does not work because it only calls Wrapper.train(). Unless we are able
+    #    to detect the refit call. Maybe using sampling_iterations? We can always refit the model
+    #    manually.
+    # 2. Scoring strategies (e.g. scoring='accuracy') can not be used because they call train()
+    #    followed by predict()
 
     print('\nBest params: %s' % str(validator.best_params_))
     print('Best eval score: %f' % validator.best_score_)
