@@ -33,8 +33,8 @@ def build_model(x):
   W_fc2 = weight_variable([1024, 10])
   b_fc2 = bias_variable([10])
 
-  y_conv = tf.matmul(h_fc1_drop, W_fc2) + b_fc2
-  return y_conv, keep_prob
+  logits = tf.matmul(h_fc1_drop, W_fc2) + b_fc2
+  return logits, keep_prob
 
 def conv2d(x, W):
   return tf.nn.conv2d(x, W, strides=[1, 1, 1, 1], padding='SAME')
@@ -79,16 +79,16 @@ def main(_):
       mnist = input_data.read_data_sets(FLAGS.data_dir, one_hot=True)
 
       x = tf.placeholder(tf.float32, [None, 784])
-      y_ = tf.placeholder(tf.float32, [None, 10])
-      y_conv, keep_prob = build_model(x)
+      y = tf.placeholder(tf.float32, [None, 10])
+      logits, keep_prob = build_model(x)
 
-      cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=y_conv)) # TODO compare with mnist_basic.py
+      cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y, logits=logits)) # TODO compare with mnist_basic.py
 
       global_step = tf.train.get_or_create_global_step()
 
       train_step = tf.train.AdamOptimizer(1e-4).minimize(cross_entropy, global_step=global_step)
 
-      correct_prediction = tf.equal(tf.argmax(y_conv, 1), tf.argmax(y_, 1))
+      correct_prediction = tf.equal(tf.argmax(logits, 1), tf.argmax(y, 1))
 
       accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 
@@ -113,7 +113,7 @@ def main(_):
         if i % 50 == 0:
           feed_dict = {
               x: batch[0], 
-              y_: batch[1], 
+              y: batch[1], 
               keep_prob: 1.0
           }
           train_accuracy = mon_sess.run(accuracy, feed_dict=feed_dict)
@@ -122,7 +122,7 @@ def main(_):
         # Run a training step asynchronously.
         feed_dict = {
           x: batch[0], 
-          y_: batch[1], 
+          y: batch[1], 
           keep_prob: 0.5 
         }
         mon_sess.run(train_step, feed_dict=feed_dict)
