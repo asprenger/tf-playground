@@ -6,11 +6,7 @@ import tensorflow as tf
 
 FLAGS = None
 
-
-# https://www.tensorflow.org/deploy/distributed
-# https://github.com/hn826/distributed-tensorflow
-
-def deepnn(x):
+def build_model(x):
   x_image = tf.reshape(x, [-1, 28, 28, 1])
 
   W_conv1 = weight_variable([5, 5, 1, 32])
@@ -65,35 +61,30 @@ def main(_):
   # Create a cluster from the parameter server and worker hosts.
   cluster = tf.train.ClusterSpec({"ps": ps_hosts, "worker": worker_hosts})
 
-
-
   # Create and start a server for the local task.
   server = tf.train.Server(cluster,
                            job_name=FLAGS.job_name, # 'ps' or 'worker'
                            task_index=FLAGS.task_index)
-
 
   if FLAGS.job_name == "ps":
     server.join()
 
   elif FLAGS.job_name == "worker":
 
-    # Assigns ops to the local worker by default.
-    with tf.device(tf.train.replica_device_setter(
-        worker_device="/job:worker/task:%d" % FLAGS.task_index,
-        cluster=cluster)):
+    # The device function assigns each node in the graph to a device.
+    device_fn = tf.train.replica_device_setter(worker_device="/job:worker/task:%d" % FLAGS.task_index, cluster=cluster)
 
-      # Import data
+    with tf.device(device_fn):
+
       mnist = input_data.read_data_sets(FLAGS.data_dir, one_hot=True)
 
-      # Build Deep MNIST model...
       x = tf.placeholder(tf.float32, [None, 784])
       y_ = tf.placeholder(tf.float32, [None, 10])
-      y_conv, keep_prob = deepnn(x)
+      y_conv, keep_prob = build_model(x)
 
-      cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=y_conv))
+      cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=y_conv)) # TODO compare with mnist_basic.py
 
-      global_step = tf.contrib.framework.get_or_create_global_step()
+      global_step = tf.train.get_or_create_global_step()
 
       train_step = tf.train.AdamOptimizer(1e-4).minimize(cross_entropy, global_step=global_step)
 
@@ -105,27 +96,30 @@ def main(_):
     hooks = [tf.train.StopAtStepHook(last_step=1000)]
 
     # The MonitoredTrainingSession takes care of session initialization,
-    # restoring from a checkpoint, saving to a checkpoint, and closing when done
-    # or an error occurs.
+    # restoring from a checkpoint, saving to a checkpoint, and closing when 
+    # done or an error occurs. 
+    # `server.target` returns a URL for a tf.Session to connect to this server.
+    # The master worker has the task_index 0.
     with tf.train.MonitoredTrainingSession(master=server.target,
                                            is_chief=(FLAGS.task_index == 0),
                                            checkpoint_dir=FLAGS.log_dir,
                                            hooks=hooks) as mon_sess:
-      i = 0
+
+      i = 0 # TODO rename with 'step'
       while not mon_sess.should_stop():
         
-        # Run a training step asynchronously.
         batch = mnist.train.next_batch(50)
-        if i % 100 == 0:
+
+        if i % 50 == 0:
           feed_dict = {
               x: batch[0], 
               y_: batch[1], 
               keep_prob: 1.0
           }
           train_accuracy = mon_sess.run(accuracy, feed_dict=feed_dict)
-
           print('global_step %s, task:%d_step %d, training accuracy %g' % (tf.train.global_step(mon_sess, global_step), FLAGS.task_index, i, train_accuracy))
 
+        # Run a training step asynchronously.
         feed_dict = {
           x: batch[0], 
           y_: batch[1], 
@@ -137,8 +131,6 @@ def main(_):
 if __name__ == "__main__":
   parser = argparse.ArgumentParser()
   parser.register("type", "bool", lambda v: v.lower() == "true")
-
-  # Flags for defining the tf.train.ClusterSpec
 
   parser.add_argument(
       "--ps_hosts",
@@ -159,8 +151,6 @@ if __name__ == "__main__":
       help="One of 'ps', 'worker'"
   )
 
-  # Flags for defining the tf.train.Server
-
   parser.add_argument(
       "--task_index",
       type=int,
@@ -168,12 +158,10 @@ if __name__ == "__main__":
       help="Index of task within the job"
   )
 
-  # Flags for specifying input/output directories
-
   parser.add_argument(
       "--data_dir",
       type=str,
-      default="/tmp/mnist_data",
+      default="/tmp/tensorflow/mnist",
       help="Directory for storing input data")
 
   parser.add_argument(
