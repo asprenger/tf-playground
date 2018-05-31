@@ -1,56 +1,69 @@
+'''A distributed MNIST classifier using the TensorFlow low-level API.'''
+
 import argparse
 import sys
-
-from tensorflow.examples.tutorials.mnist import input_data
 import tensorflow as tf
+import tensorflow.contrib.layers as layers
+from tensorflow.examples.tutorials.mnist import input_data
+
 
 FLAGS = None
 
 def build_model(x):
-  x_image = tf.reshape(x, [-1, 28, 28, 1])
 
-  W_conv1 = weight_variable([5, 5, 1, 32])
-  b_conv1 = bias_variable([32])
-  h_conv1 = tf.nn.relu(conv2d(x_image, W_conv1) + b_conv1)
+    x_image = tf.reshape(x, [-1, 28, 28, 1])
 
-  h_pool1 = max_pool_2x2(h_conv1)
+    with tf.variable_scope("model"):
 
-  W_conv2 = weight_variable([5, 5, 32, 64])
-  b_conv2 = bias_variable([64])
-  h_conv2 = tf.nn.relu(conv2d(h_pool1, W_conv2) + b_conv2)
+        conv1 = layers.convolution2d(x_image,
+                    num_outputs=32,
+                    kernel_size=5,
+                    stride=1,
+                    padding='SAME',
+                    activation_fn=tf.nn.relu,
+                    scope='conv1')
 
-  h_pool2 = max_pool_2x2(h_conv2)
+        pool1 = layers.max_pool2d(
+            inputs=conv1,
+            kernel_size=2,
+            stride=2,
+            padding='SAME',
+            scope='pool1')
 
-  W_fc1 = weight_variable([7 * 7 * 64, 1024])
-  b_fc1 = bias_variable([1024])
+        conv2 = layers.convolution2d(pool1,
+                    num_outputs=64,
+                    kernel_size=5,
+                    stride=1,
+                    padding='SAME',
+                    activation_fn=tf.nn.relu,
+                    scope='conv2')
 
-  h_pool2_flat = tf.reshape(h_pool2, [-1, 7*7*64])
-  h_fc1 = tf.nn.relu(tf.matmul(h_pool2_flat, W_fc1) + b_fc1)
+        pool2 = layers.max_pool2d(
+            inputs=conv2,
+            kernel_size=2,
+            stride=2,
+            padding='SAME',
+            scope='pool2')
 
-  keep_prob = tf.placeholder(tf.float32)
-  h_fc1_drop = tf.nn.dropout(h_fc1, keep_prob)
+        flattened = layers.flatten(pool2)
 
-  W_fc2 = weight_variable([1024, 10])
-  b_fc2 = bias_variable([10])
+        fc1 = layers.fully_connected(flattened, 
+            1024, 
+            activation_fn=tf.nn.relu, 
+            scope='fc1')
 
-  logits = tf.matmul(h_fc1_drop, W_fc2) + b_fc2
-  return logits, keep_prob
+        keep_prob = tf.placeholder(tf.float32)
+        drop1 = layers.dropout(
+            fc1,
+            keep_prob=keep_prob,
+            scope='drop1')
 
-def conv2d(x, W):
-  return tf.nn.conv2d(x, W, strides=[1, 1, 1, 1], padding='SAME')
+        logits = layers.fully_connected(drop1, 
+            10, 
+            activation_fn=None, 
+            scope='fc2')
 
-def max_pool_2x2(x):
-  return tf.nn.max_pool(x, ksize=[1, 2, 2, 1],
-                        strides=[1, 2, 2, 1], padding='SAME')
-
-def weight_variable(shape):
-  initial = tf.truncated_normal(shape, stddev=0.1)
-  return tf.Variable(initial)
-
-def bias_variable(shape):
-  initial = tf.constant(0.1, shape=shape)
-  return tf.Variable(initial)
-
+        return logits, keep_prob
 
 
 def main(_):
@@ -76,21 +89,23 @@ def main(_):
 
     with tf.device(device_fn):
 
-      mnist = input_data.read_data_sets(FLAGS.data_dir, one_hot=True)
+      print('Loading dataset')
+      mnist = input_data.read_data_sets(FLAGS.data_dir)
+      print('%d train images' % mnist.train.num_examples)
+      print('%d test images' % mnist.test.num_examples)
 
       x = tf.placeholder(tf.float32, [None, 784])
-      y = tf.placeholder(tf.float32, [None, 10])
+      y = tf.placeholder(tf.int64, [None])
       logits, keep_prob = build_model(x)
 
-      cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y, logits=logits)) # TODO compare with mnist_basic.py
-
       global_step = tf.train.get_or_create_global_step()
+      cross_entropy = tf.losses.sparse_softmax_cross_entropy(labels=y, logits=logits)
+      loss = tf.reduce_mean(cross_entropy)
+      train_op = tf.train.AdamOptimizer(1e-4).minimize(loss, global_step=global_step)
 
-      train_step = tf.train.AdamOptimizer(1e-4).minimize(cross_entropy, global_step=global_step)
+      correct_prediction = tf.cast(tf.equal(tf.argmax(logits, 1), y), tf.float32)
+      accuracy = tf.reduce_mean(correct_prediction)
 
-      correct_prediction = tf.equal(tf.argmax(logits, 1), tf.argmax(y, 1))
-
-      accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 
     # The StopAtStepHook handles stopping after running given steps.
     hooks = [tf.train.StopAtStepHook(last_step=1000)]
@@ -110,22 +125,16 @@ def main(_):
         
         batch = mnist.train.next_batch(50)
 
-        if i % 50 == 0:
-          feed_dict = {
-              x: batch[0], 
-              y: batch[1], 
-              keep_prob: 1.0
-          }
-          train_accuracy = mon_sess.run(accuracy, feed_dict=feed_dict)
-          print('global_step %s, task:%d_step %d, training accuracy %g' % (tf.train.global_step(mon_sess, global_step), FLAGS.task_index, i, train_accuracy))
-
         # Run a training step asynchronously.
-        feed_dict = {
-          x: batch[0], 
-          y: batch[1], 
-          keep_prob: 0.5 
-        }
-        mon_sess.run(train_step, feed_dict=feed_dict)
+        feed_dict = { x: batch[0], y: batch[1], keep_prob: 0.5 }
+        mon_sess.run(train_op, feed_dict=feed_dict)
+
+        if i % 50 == 0 and i > 0:
+          feed_dict = { x: batch[0], y: batch[1], keep_prob: 1.0 }
+          train_accuracy = mon_sess.run(accuracy, feed_dict=feed_dict)
+          gstep = tf.train.global_step(mon_sess, global_step)
+          print('global_step %s, task:%d_step %d, training accuracy %g' % (gstep, FLAGS.task_index, i, train_accuracy))
+
         i = i + 1
 
 if __name__ == "__main__":

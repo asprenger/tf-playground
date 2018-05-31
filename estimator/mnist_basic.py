@@ -1,10 +1,7 @@
 '''A MNIST classifier using the TensorFlow low-level API.'''
 
-# This is the TensorFlow tutorial implementation of the deep MNIST classifier 
-# with some modifications. Nothing really interesting here. This will serve
-# as a baseline to compare the other implementations in terms of complexity 
-# and functionality.
-
+# Nothing really interesting here. This implentation serves as a baseline to 
+# compare the other implementations in terms of complexity and functionality.
 # The low-level API offers a maximum of flexibility. The disadvantage is that
 # a lot of boiler-plate must be written. 
 
@@ -20,7 +17,7 @@ from tensorflow.examples.tutorials.mnist import input_data
 
 FLAGS = None
 
-def network(x):
+def build_model(x):
 
     x_image = tf.reshape(x, [-1, 28, 28, 1])
 
@@ -86,7 +83,7 @@ def main(_):
 
     x = tf.placeholder(tf.float32, [None, 784])
     y = tf.placeholder(tf.int64, [None])
-    logits, keep_prob = network(x)
+    logits, keep_prob = build_model(x)
     
     cross_entropy = tf.losses.sparse_softmax_cross_entropy(labels=y, logits=logits)
     loss = tf.reduce_mean(cross_entropy)

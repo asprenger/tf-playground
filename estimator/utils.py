@@ -1,4 +1,5 @@
 import sys
+import shutil
 import inspect
 import datetime
 import random
@@ -67,3 +68,5 @@ def ensure_dir(path):
     if not os.path.exists(path):
         os.makedirs(path)
 
+def delete_dir(path):
+    shutil.rmtree(path, ignore_errors=True)

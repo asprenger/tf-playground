@@ -1,4 +1,4 @@
-'''A MNIST classifier that calls tf.estimator.train_and_evaluate()'''
+'''A MNIST classifier using the tf.estimator.train_and_evaluate() function'''
 
 # This implementation creates a `tf.estimator.Estimator`, train_spec and eval_spec and 
 # than calls `tf.estimator.train_and_evaluate()` that trains and evaluates the model.
@@ -23,6 +23,7 @@ import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.layers as layers
 from tensorflow.examples.tutorials.mnist import input_data
+from utils import delete_dir
 
 FLAGS = None
 
@@ -59,10 +60,6 @@ class MyExporter(tf.estimator.Exporter):
         return self._name
     def export(self, estimator, export_path, checkpoint_path, eval_result, is_the_final_export):
         print('EVAL RESULT', eval_result)
-
-
-def delete_dir(path):
-    shutil.rmtree(path, ignore_errors=True)
 
 def network(x):
 
@@ -150,13 +147,6 @@ def model_fn(features, labels, mode, params):
         eval_metric_ops=eval_metric_ops)
 
 
-# TODO How can we implement this pattern:
-# train n epochs
-# evaluate
-# train n epochs
-# evaluate
-# ...
-
 def main(_):
 
     delete_dir(FLAGS.model_dir)
@@ -164,10 +154,10 @@ def main(_):
     print('Loading dataset')
     mnist = input_data.read_data_sets(FLAGS.data_dir)
 
-    x_train = mnist.train.images #[0:1000]
-    y_train = mnist.train.labels #[0:1000]
-    x_test = mnist.test.images #[0:100]
-    y_test = mnist.test.labels #[0:100]
+    x_train = mnist.train.images
+    y_train = mnist.train.labels
+    x_test = mnist.test.images
+    y_test = mnist.test.labels
 
     print('%d train images' % x_train.shape[0])
     print('%d test images' % x_test.shape[0])
@@ -201,14 +191,6 @@ def main(_):
         exporters=[MyExporter()],
         hooks=[EvalHook()]
     )
-
-    # TODO: need better understanding how the train_and_evaluate() workflow works.
-    # When numpy_input_fn.num_epochs is set to a number, training terminates after 
-    # the given number of epochs but the loop does not terminate and the model
-    # is evaluated multiple times.
-
-    # Make sure to set `eval_input_fn.num_batch=1` and `eval_spec.steps=None`. Evaluation stops
-    # on EOF and this setting makes sure there is exactly one iteration over the eval data.
     
     model_params = {"learning_rate": 1e-4}
     estimator = tf.estimator.Estimator(model_fn=model_fn, model_dir=FLAGS.model_dir, params=model_params)

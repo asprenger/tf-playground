@@ -114,25 +114,33 @@ def model_fn(features, labels, mode, params):
 
 def main():
 
+    data_dir = '/tmp/mnist'
+    model_dir = '/tmp/model'
     batch_size = 128
-    data_dir = '/tmp/tensorflow/mnist'
+    train_epochs_before_evals = 1
     use_dataset = True
+
+    delete_dir(data_dir)
 
     if use_dataset:
         # Use `tf.data.Dataset` to read train and eval data. 
         def train_input_fn():
             ds = dataset.train(data_dir)
-            ds = ds.cache().shuffle(buffer_size=5000).batch(batch_size)
-            ds = ds.repeat(1)
-            return ds
+            ds = ds.cache()
+            ds = ds.shuffle(buffer_size=50000)
+            ds = ds.batch(batch_size)
+            ds = ds.repeat(train_epochs_before_evals)
+            return ds      
 
         def eval_input_fn():
-            return dataset.test(data_dir).batch(batch_size)
+            ds = dataset.test(data_dir)
+            ds = ds.cache().batch(batch_size)
+            return ds
 
     else:
         # Use `numpy_input_fn()` to read train and evaluation data
         # from Numpy arrays.
-        mnist = input_data.read_data_sets('/tmp/tensorflow/mnist')
+        mnist = input_data.read_data_sets(data_dir)
         train_input_fn = tf.estimator.inputs.numpy_input_fn(
             x={"x": mnist.train.images},
             y=mnist.train.labels.astype(np.int32), 
@@ -147,7 +155,7 @@ def main():
             shuffle=False)
         
     model_params = {'learning_rate': 1e-4, 'hidden_size': 512}
-    estimator = tf.estimator.Estimator(model_fn=model_fn, params=model_params)
+    estimator = tf.estimator.Estimator(model_fn=model_fn, model_dir=model_dir, params=model_params)
 
     # train model
     estimator.train(input_fn=train_input_fn, hooks=[TrainHook()]) 

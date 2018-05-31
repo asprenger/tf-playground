@@ -1,7 +1,7 @@
 '''A MNIST classifier using the TensorFlow Estimator API.'''
 
-# This implementation creates a `tf.estimator.Estimator` and calls the `train()`, 
-# `evaluate()` and `predict()` methods directly.
+# This implementation uses a `tf.estimator.Estimator` to train/evaluate a MNIST classifier
+# and to generate predictions.
 
 # A `tf.estimator.inputs.numpy_input_fn` is used to create an input function that feeds 
 # numpy arrays into the model. The alternative would be to use the Dataset API.
@@ -47,11 +47,7 @@ class OverwriteKeepProbabilityHook(tf.train.SessionRunHook):
         return tf.train.SessionRunArgs(fetches, feed_dict=feed_dict)
 
 
-def get_all_variables_with_name(var_name):
-    name = var_name + ':0'
-    return [var for var in tf.all_variables() if var.name.endswith(name)]
-
-def network(x):
+def build_model(x):
 
     print('Model')
 
@@ -117,7 +113,7 @@ def network(x):
 def model_fn(features, labels, mode, params):
     '''Model function for Estimator.'''
 
-    logits, keep_prob = network(features["x"]) 
+    logits, keep_prob = build_model(features["x"]) 
 
     predictions = tf.argmax(logits, axis=1, output_type=tf.int32)
 
@@ -181,7 +177,6 @@ def main(_):
         y=predict_labels, 
         num_epochs=1,
         shuffle=False)
-
 
     model_params = {"learning_rate": 1e-4}
     estimator = tf.estimator.Estimator(model_fn=model_fn, params=model_params)
