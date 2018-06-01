@@ -86,6 +86,8 @@ def model_fn(features, labels, mode, params):
     # Save accuracy scalar to Tensorboard output.
     tf.summary.scalar('train_accuracy', accuracy[1])
 
+    # TODO extract 'train_op'
+
     return tf.estimator.EstimatorSpec(
         mode=tf.estimator.ModeKeys.TRAIN,
         loss=loss,
@@ -110,7 +112,7 @@ def main():
   batch_size = 128
   train_epochs_before_evals = 1
 
-  delete_dir(data_dir)
+  delete_dir(model_dir)
 
   data_format = ('channels_first' if tf.test.is_built_with_cuda() else 'channels_last')
 
@@ -137,16 +139,14 @@ def main():
     ds = ds.cache().batch(batch_size)
     return ds
 
-  print('TRAIN')
+  print('Train model for %d epoch(s)' % train_epochs_before_evals
   train_hooks = [tf.train.LoggingTensorHook(tensors=['learning_rate', 'cross_entropy', 'train_accuracy'], every_n_iter=100)]
   mnist_classifier.train(input_fn=train_input_fn, hooks=train_hooks)
 
-  print('EVAL')
+  print('Evaluate model')
   eval_results = mnist_classifier.evaluate(input_fn=eval_input_fn)
-  print('\nEvaluation results:\n\t%s\n' % eval_results)
-
-  print('Loss: %s' % ev['loss'])
-  print('Eval accuracy: %s' % ev['accuracy'])
+  print('Eval loss: %s' % eval_results['loss'])
+  print('Eval accuracy: %s' % eval_results['accuracy'])
 
 
 if __name__ == '__main__':

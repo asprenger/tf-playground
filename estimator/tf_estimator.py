@@ -104,6 +104,10 @@ def model_fn(features, labels, mode, params):
     acc, acc_op = tf.metrics.accuracy(labels=labels, predictions=predictions)
     eval_metric_ops = { "accuracy": (acc, acc_op) }
 
+
+    # TODO what is the difference to mnist_keras.model_fn() that has 3 cases
+
+
     # EstimatorSpec for ModeKeys.EVAL and ModeKeys.TRAIN
     return tf.estimator.EstimatorSpec(
         mode=mode,
