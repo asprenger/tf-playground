@@ -7,7 +7,41 @@ from utils import delete_dir
 
 tf.logging.set_verbosity(tf.logging.INFO)
 
+
 def build_model(data_format):
+  """Build the model.
+  Args:
+    data_format: 'channels_first' or 'channels_last'. 'channels_first' is
+      typically faster on GPUs while 'channels_last' is typically faster on
+      CPUs. 
+  Returns:
+    A tf.keras.Model.
+  """
+  if data_format == 'channels_first':
+    input_shape = [1, 28, 28]
+  else:
+    assert data_format == 'channels_last'
+    input_shape = [28, 28, 1]
+
+  layers = tf.keras.layers
+
+  inputs = layers.Input((784,))
+  x = layers.Reshape(input_shape)(inputs)
+  x = layers.Conv2D(32, (3, 3), activation='relu', padding='valid')(x)
+  x = layers.MaxPooling2D(pool_size=(2, 2))(x)
+  x = layers.Conv2D(64, (3, 3), activation='relu')(x)
+  x = layers.MaxPooling2D(pool_size=(2, 2))(x)
+  x = layers.Flatten()(x)
+  x = layers.Dense(512, activation='relu')(x)
+  x = layers.Dropout(0.5)(x)
+  logits = layers.Dense(10, activation=None, name='logits')(x)
+
+  return tf.keras.models.Model(inputs=inputs, outputs=logits)
+
+  
+
+
+def build_model_old(data_format):
   """Build the model.
   Args:
     data_format: 'channels_first' or 'channels_last'. 'channels_first' is
@@ -139,7 +173,7 @@ def main():
     ds = ds.cache().batch(batch_size)
     return ds
 
-  print('Train model for %d epoch(s)' % train_epochs_before_evals
+  print('Train model for %d epoch(s)' % train_epochs_before_evals)
   train_hooks = [tf.train.LoggingTensorHook(tensors=['learning_rate', 'cross_entropy', 'train_accuracy'], every_n_iter=100)]
   mnist_classifier.train(input_fn=train_input_fn, hooks=train_hooks)
 
