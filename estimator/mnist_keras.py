@@ -1,5 +1,6 @@
 """A MNIST classifier using the Estimator API. The model is build using Keras."""
 
+import six
 import numpy as np
 import tensorflow as tf
 import dataset
@@ -37,10 +38,16 @@ def build_model(data_format):
   
 def model_fn(features, labels, mode, params):
   """The model_fn argument for creating an Estimator."""
-  model = build_model(params['data_format'])
+  
   image = features
   if isinstance(image, dict):
     image = features['image']
+
+
+  model = build_model(params['data_format'])
+
+
+
 
   if mode == tf.estimator.ModeKeys.PREDICT:
     logits = model(image, training=False)
@@ -55,9 +62,14 @@ def model_fn(features, labels, mode, params):
             'classify': tf.estimator.export.PredictOutput(predictions)
         })
 
+
+
+
+
   if mode == tf.estimator.ModeKeys.TRAIN:
-    logits = model(image, training=True)
+    logits = model(image, training=True)    
     loss = tf.losses.sparse_softmax_cross_entropy(labels=labels, logits=logits)
+
     optimizer = tf.train.AdamOptimizer(learning_rate=params["learning_rate"]) 
     train_op = optimizer.minimize(loss, tf.train.get_or_create_global_step())
 
@@ -76,17 +88,21 @@ def model_fn(features, labels, mode, params):
         loss=loss,
         train_op=train_op)
 
+
   if mode == tf.estimator.ModeKeys.EVAL:
     logits = model(image, training=False)
     loss = tf.losses.sparse_softmax_cross_entropy(labels=labels, logits=logits)
+
+    acc, acc_op = tf.metrics.accuracy(labels=labels, predictions=tf.argmax(logits, axis=1))
+    eval_metric_ops = { "accuracy": (acc, acc_op) }
+
     return tf.estimator.EstimatorSpec(
         mode=tf.estimator.ModeKeys.EVAL,
         loss=loss,
-        eval_metric_ops={
-            'accuracy':
-                tf.metrics.accuracy(
-                    labels=labels, predictions=tf.argmax(logits, axis=1)),
-        })
+        eval_metric_ops=eval_metric_ops)
+
+
+
 
 def main():
 
@@ -123,7 +139,12 @@ def main():
     return ds
 
   print('Train model for %d epoch(s)' % train_epochs_before_evals)
-  train_hooks = [tf.train.LoggingTensorHook(tensors=['learning_rate', 'cross_entropy', 'train_accuracy'], every_n_iter=100)]
+
+
+  train_hooks = [MyLoggingTensorHook(tensors=['learning_rate', 'cross_entropy', 'train_accuracy'], every_n_iter=100)]
+
+
+  #train_hooks = [tf.train.LoggingTensorHook(tensors=['learning_rate', 'cross_entropy', 'train_accuracy'], every_n_iter=100)]
   mnist_classifier.train(input_fn=train_input_fn, hooks=train_hooks)
 
   print('Evaluate model')
