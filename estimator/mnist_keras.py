@@ -7,24 +7,20 @@ from utils import delete_dir
 
 tf.logging.set_verbosity(tf.logging.INFO)
 
-
 def build_model(data_format):
   """Build the model.
   Args:
-    data_format: 'channels_first' or 'channels_last'. 'channels_first' is
-      typically faster on GPUs while 'channels_last' is typically faster on
-      CPUs. 
+    data_format: 'channels_first' or 'channels_last'.
   Returns:
-    A tf.keras.Model.
+    A tf.keras.Model
   """
   if data_format == 'channels_first':
-    input_shape = [1, 28, 28]
+    input_shape = [1, 28, 28] # faster on GPUs
   else:
     assert data_format == 'channels_last'
-    input_shape = [28, 28, 1]
+    input_shape = [28, 28, 1] # faster on CPUs
 
   layers = tf.keras.layers
-
   inputs = layers.Input((784,))
   x = layers.Reshape(input_shape)(inputs)
   x = layers.Conv2D(32, (3, 3), activation='relu', padding='valid')(x)
@@ -39,53 +35,6 @@ def build_model(data_format):
   return tf.keras.models.Model(inputs=inputs, outputs=logits)
 
   
-
-
-def build_model_old(data_format):
-  """Build the model.
-  Args:
-    data_format: 'channels_first' or 'channels_last'. 'channels_first' is
-      typically faster on GPUs while 'channels_last' is typically faster on
-      CPUs. 
-  Returns:
-    A tf.keras.Model.
-  """
-  if data_format == 'channels_first':
-    input_shape = [1, 28, 28]
-  else:
-    assert data_format == 'channels_last'
-    input_shape = [28, 28, 1]
-
-  l = tf.keras.layers
-  max_pool = l.MaxPooling2D(
-      (2, 2), (2, 2), padding='same', data_format=data_format)
-  # The model consists of a sequential chain of layers, so tf.keras.Sequential
-  # (a subclass of tf.keras.Model) makes for a compact description.
-  return tf.keras.Sequential(
-      [
-          l.Reshape(
-              target_shape=input_shape,
-              input_shape=(28 * 28,)),
-          l.Conv2D(
-              32,
-              5,
-              padding='same',
-              data_format=data_format,
-              activation=tf.nn.relu),
-          max_pool,
-          l.Conv2D(
-              64,
-              5,
-              padding='same',
-              data_format=data_format,
-              activation=tf.nn.relu),
-          max_pool,
-          l.Flatten(),
-          l.Dense(1024, activation=tf.nn.relu),
-          l.Dropout(0.4),
-          l.Dense(10)
-      ])
-
 def model_fn(features, labels, mode, params):
   """The model_fn argument for creating an Estimator."""
   model = build_model(params['data_format'])
@@ -107,9 +56,11 @@ def model_fn(features, labels, mode, params):
         })
 
   if mode == tf.estimator.ModeKeys.TRAIN:
-    optimizer = tf.train.AdamOptimizer(params['learning_rate'])
     logits = model(image, training=True)
     loss = tf.losses.sparse_softmax_cross_entropy(labels=labels, logits=logits)
+    optimizer = tf.train.AdamOptimizer(learning_rate=params["learning_rate"]) 
+    train_op = optimizer.minimize(loss, tf.train.get_or_create_global_step())
+
     accuracy = tf.metrics.accuracy(labels=labels, predictions=tf.argmax(logits, axis=1))
 
     # Name tensors to be logged with LoggingTensorHook.
@@ -120,12 +71,10 @@ def model_fn(features, labels, mode, params):
     # Save accuracy scalar to Tensorboard output.
     tf.summary.scalar('train_accuracy', accuracy[1])
 
-    # TODO extract 'train_op'
-
     return tf.estimator.EstimatorSpec(
         mode=tf.estimator.ModeKeys.TRAIN,
         loss=loss,
-        train_op=optimizer.minimize(loss, tf.train.get_or_create_global_step()))
+        train_op=train_op)
 
   if mode == tf.estimator.ModeKeys.EVAL:
     logits = model(image, training=False)
