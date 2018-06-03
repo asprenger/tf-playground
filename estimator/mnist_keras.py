@@ -47,12 +47,10 @@ def model_fn(features, labels, mode, params):
   model = build_model(params['data_format'])
 
 
-
-
   if mode == tf.estimator.ModeKeys.PREDICT:
     logits = model(image, training=False)
     predictions = {
-        'classes': tf.argmax(logits, axis=1),
+        'class': tf.argmax(logits, axis=1),
         'probabilities': tf.nn.softmax(logits),
     }
     return tf.estimator.EstimatorSpec(
@@ -61,8 +59,6 @@ def model_fn(features, labels, mode, params):
         export_outputs={
             'classify': tf.estimator.export.PredictOutput(predictions)
         })
-
-
 
 
 
@@ -102,8 +98,6 @@ def model_fn(features, labels, mode, params):
         eval_metric_ops=eval_metric_ops)
 
 
-
-
 def main():
 
   data_dir = '/tmp/mnist'
@@ -120,7 +114,7 @@ def main():
       'learning_rate': 1e-4
   }
 
-  mnist_classifier = tf.estimator.Estimator(
+  estimator = tf.estimator.Estimator(
       model_fn=model_fn,
       model_dir=model_dir,
       params=params)
@@ -135,22 +129,22 @@ def main():
 
   def eval_input_fn():
     ds = dataset.test(data_dir)
-    ds = ds.cache().batch(batch_size)
+    ds = ds.batch(batch_size)
     return ds
 
-  print('Train model for %d epoch(s)' % train_epochs_before_evals)
-
-
-  train_hooks = [MyLoggingTensorHook(tensors=['learning_rate', 'cross_entropy', 'train_accuracy'], every_n_iter=100)]
-
-
-  #train_hooks = [tf.train.LoggingTensorHook(tensors=['learning_rate', 'cross_entropy', 'train_accuracy'], every_n_iter=100)]
-  mnist_classifier.train(input_fn=train_input_fn, hooks=train_hooks)
+  print('Train model')
+  train_hooks = [tf.train.LoggingTensorHook(tensors=['learning_rate', 'cross_entropy', 'train_accuracy'], every_n_iter=100)]
+  estimator.train(input_fn=train_input_fn, hooks=train_hooks)
 
   print('Evaluate model')
-  eval_results = mnist_classifier.evaluate(input_fn=eval_input_fn)
+  eval_results = estimator.evaluate(input_fn=eval_input_fn)
   print('Eval loss: %s' % eval_results['loss'])
   print('Eval accuracy: %s' % eval_results['accuracy'])
+
+  print('Do some predictions:')
+  preds = estimator.predict(input_fn=eval_input_fn)
+  for _ in range(5):
+    print(preds.__next__()['class'])
 
 
 if __name__ == '__main__':
