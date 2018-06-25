@@ -62,7 +62,7 @@ def model_fn(features, labels, mode, params):
 
     image = features
     if isinstance(features, dict):
-        image = features['x'] # used if input is read from Numpy arrays
+        image = features['X'] # used if input is read from Numpy arrays
     
     if mode == tf.estimator.ModeKeys.PREDICT:
         logits = build_model(image, params['hidden_size'], 1.0)
@@ -75,7 +75,7 @@ def model_fn(features, labels, mode, params):
             predictions=predictions)
 
     if mode == tf.estimator.ModeKeys.TRAIN:
-        logits = build_model(image, params['hidden_size'], 0.5)
+        logits = build_model(image, params['hidden_size'], params['keep_rate'])
         loss = tf.losses.sparse_softmax_cross_entropy(labels=labels, logits=logits)
 
         optimizer = tf.train.AdamOptimizer(learning_rate=params["learning_rate"]) 
@@ -112,7 +112,7 @@ def main():
     model_dir = '/tmp/model'
     batch_size = 128
     train_epochs_before_evals = 1
-    use_dataset = False
+    use_dataset = True
 
     delete_dir(model_dir)
 
@@ -136,19 +136,19 @@ def main():
         # from Numpy arrays.
         mnist = input_data.read_data_sets(data_dir)
         train_input_fn = tf.estimator.inputs.numpy_input_fn(
-            x={"x": mnist.train.images},
+            x={'X': mnist.train.images},
             y=mnist.train.labels.astype(np.int32), 
             num_epochs=1,
             batch_size=batch_size,
             shuffle=True)    
         eval_input_fn = tf.estimator.inputs.numpy_input_fn(
-            x={"x": mnist.test.images},
+            x={'X': mnist.test.images},
             y=mnist.test.labels.astype(np.int32), 
             num_epochs=1,
             batch_size=batch_size,
             shuffle=False)
         
-    model_params = {'learning_rate': 1e-4, 'hidden_size': 512}
+    model_params = {'learning_rate': 1e-4, 'hidden_size': 512, 'keep_rate': 0.5}
     estimator = tf.estimator.Estimator(model_fn=model_fn, model_dir=model_dir, params=model_params)
 
     print('Train model')
