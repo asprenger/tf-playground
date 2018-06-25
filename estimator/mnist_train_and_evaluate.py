@@ -19,6 +19,7 @@ import tensorflow as tf
 import tensorflow.contrib.layers as layers
 from tensorflow.examples.tutorials.mnist import input_data
 from utils import delete_dir
+import dataset
 
 FLAGS = None
 
@@ -56,14 +57,10 @@ class MyExporter(tf.estimator.Exporter):
     def export(self, estimator, export_path, checkpoint_path, eval_result, is_the_final_export):
         print('EVAL RESULT', eval_result)
 
-def network(x):
-
-    x_image = tf.reshape(x, [-1, 28, 28, 1])
-
+def build_model(x, hidden_size, keep_prob):
+    print('BUILD MODEL(x=%s, hidden_size=%d, keep_prob=%f)' % (x.shape, hidden_size, keep_prob))
     with tf.variable_scope("model"):
-
-        keep_prob = tf.placeholder_with_default(1.0, shape=(), name='keep_prob')
-
+        x_image = tf.reshape(x, [-1, 28, 28, 1])
         conv1 = layers.convolution2d(x_image,
                     num_outputs=32,
                     kernel_size=5,
@@ -71,14 +68,12 @@ def network(x):
                     padding='SAME',
                     activation_fn=tf.nn.relu,
                     scope='conv1')
-
         pool1 = layers.max_pool2d(
             inputs=conv1,
             kernel_size=2,
             stride=2,
             padding='SAME',
             scope='pool1')
-
         conv2 = layers.convolution2d(pool1,
                     num_outputs=64,
                     kernel_size=5,
@@ -86,92 +81,98 @@ def network(x):
                     padding='SAME',
                     activation_fn=tf.nn.relu,
                     scope='conv2')
-
         pool2 = layers.max_pool2d(
             inputs=conv2,
             kernel_size=2,
             stride=2,
             padding='SAME',
             scope='pool2')
-
         flattened = layers.flatten(pool2)
-
         fc1 = layers.fully_connected(flattened, 
-            1024, 
+            hidden_size, 
             activation_fn=tf.nn.relu, 
             scope='fc1')
-
         drop1 = layers.dropout(
             fc1,
-            keep_prob=1.0, 
+            keep_prob=keep_prob,
             scope='drop1')
-
         logits = layers.fully_connected(drop1, 
             10, 
             activation_fn=None, 
             scope='fc2')
-
-        return logits, keep_prob
+        return logits
 
 
 def model_fn(features, labels, mode, params):
     '''Model function for Estimator.'''
 
-    logits, keep_prob = network(features["x"]) 
-
-    predictions = tf.argmax(logits, axis=1, output_type=tf.int32)
-
+    image = features
+    if isinstance(features, dict):
+        image = features['X'] # used if input is read from Numpy arrays
+    
     if mode == tf.estimator.ModeKeys.PREDICT:
+        logits = build_model(image, params['hidden_size'], 1.0)
+        predictions = { 
+            "class": tf.argmax(logits, axis=1, output_type=tf.int32),
+            'probabilities': tf.nn.softmax(logits)
+        }
         return tf.estimator.EstimatorSpec(
-            mode=mode,
-            predictions={"pred": predictions})
+            mode=tf.estimator.ModeKeys.PREDICT,
+            predictions=predictions)
 
-    cross_entropy = tf.losses.sparse_softmax_cross_entropy(labels=labels, logits=logits)
-    loss = tf.reduce_mean(cross_entropy)
-    optimizer = tf.train.AdamOptimizer(learning_rate=params["learning_rate"]) 
-    train_op = optimizer.minimize(loss=loss, global_step=tf.train.get_global_step()) 
+    if mode == tf.estimator.ModeKeys.TRAIN:
+        logits = build_model(image, params['hidden_size'], params['keep_rate'])
+        loss = tf.losses.sparse_softmax_cross_entropy(labels=labels, logits=logits)
 
-    acc, acc_op = tf.metrics.accuracy(labels=labels, predictions=predictions, name='acc')
-    eval_metric_ops = { "acc": (acc, acc_op) }
+        optimizer = tf.train.AdamOptimizer(learning_rate=params["learning_rate"]) 
+        train_op = optimizer.minimize(loss=loss, global_step=tf.train.get_global_step()) 
 
-    return tf.estimator.EstimatorSpec(
-        mode=mode,
-        loss=loss,
-        train_op=train_op,
-        eval_metric_ops=eval_metric_ops)
+        accuracy = tf.metrics.accuracy(labels=labels, predictions=tf.argmax(logits, axis=1))
 
+        # Name tensors to be logged with LoggingTensorHook.
+        tf.identity(params['learning_rate'], 'learning_rate')
+        tf.identity(loss, 'cross_entropy')
+        tf.identity(accuracy[1], name='train_accuracy')
+
+        return tf.estimator.EstimatorSpec(
+            mode=tf.estimator.ModeKeys.TRAIN,
+            loss=loss,
+            train_op=train_op)
+
+    if mode == tf.estimator.ModeKeys.EVAL:
+        logits = build_model(image, params['hidden_size'], 1.0)
+        loss = tf.losses.sparse_softmax_cross_entropy(labels=labels, logits=logits)
+
+        acc, acc_op = tf.metrics.accuracy(labels=labels, predictions=tf.argmax(logits, axis=1, output_type=tf.int32))
+        eval_metric_ops = { "accuracy": (acc, acc_op) }
+
+        return tf.estimator.EstimatorSpec(
+            mode=tf.estimator.ModeKeys.EVAL,
+            loss=loss,
+            eval_metric_ops=eval_metric_ops)
 
 def main(_):
 
+    data_dir = '/tmp/mnist'
+    model_dir = '/tmp/model'
+    batch_size = 128
+    train_epochs_before_evals = 1
+    train_max_steps = 500
+
     delete_dir(FLAGS.model_dir)
 
-    print('Loading dataset')
-    mnist = input_data.read_data_sets(FLAGS.data_dir)
+    def train_input_fn():
+        ds = dataset.train(data_dir)
+        ds = ds.cache()
+        ds = ds.shuffle(buffer_size=50000)
+        ds = ds.batch(batch_size)
+        ds = ds.repeat(train_epochs_before_evals)
+        return ds      
 
-    x_train = mnist.train.images
-    y_train = mnist.train.labels
-    x_test = mnist.test.images
-    y_test = mnist.test.labels
-
-    print('%d train images' % x_train.shape[0])
-    print('%d test images' % x_test.shape[0])
-    
-    batch_size = 64
-    train_max_steps = 500
-    
-    train_input_fn = tf.estimator.inputs.numpy_input_fn(
-        x={"x": x_train},
-        y=y_train.astype(np.int32), 
-        num_epochs=1, # train model for one epoch 
-        batch_size=batch_size,
-        shuffle=True)
-
-    eval_input_fn = tf.estimator.inputs.numpy_input_fn(
-        x={"x": x_test},
-        y=y_test.astype(np.int32), 
-        num_epochs=1,
-        batch_size=batch_size,
-        shuffle=False)
+    def eval_input_fn():
+        ds = dataset.test(data_dir)
+        ds = ds.batch(batch_size)
+        return ds
 
     train_spec = tf.estimator.TrainSpec(
         input_fn=train_input_fn,
@@ -186,7 +187,7 @@ def main(_):
         hooks=[EvalHook()]
     )
     
-    model_params = {"learning_rate": 1e-4}
+    model_params = {'learning_rate': 1e-4, 'hidden_size': 512, 'keep_rate': 0.5}
     estimator = tf.estimator.Estimator(model_fn=model_fn, model_dir=FLAGS.model_dir, params=model_params)
 
     tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)
