@@ -1,4 +1,10 @@
-"""A MNIST classifier using the Estimator API. The model is build using Keras."""
+"""
+A MNIST classifier using the Estimator API. The model is build using Keras.
+
+This is equivalent to the `mnist_estimator.py` example but the model is 
+build using the Keras API. Note that this uses the Keras implementation 
+that is distributed with TensorFlow, not the standalone Keras version.
+"""
 
 import six
 import numpy as np
@@ -43,9 +49,7 @@ def model_fn(features, labels, mode, params):
   if isinstance(image, dict):
     image = features['image']
 
-
   model = build_model(params['data_format'])
-
 
   if mode == tf.estimator.ModeKeys.PREDICT:
     logits = model(image, training=False)
@@ -59,8 +63,6 @@ def model_fn(features, labels, mode, params):
         export_outputs={
             'classify': tf.estimator.export.PredictOutput(predictions)
         })
-
-
 
   if mode == tf.estimator.ModeKeys.TRAIN:
     logits = model(image, training=True)    

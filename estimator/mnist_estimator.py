@@ -1,6 +1,14 @@
-"""A MNIST classifier using the TensorFlow Estimator API."""
+"""
+A MNIST classifier using the TensorFlow Estimator API.
 
-# Shows how to read data using tf.data.Dataset or alternative numpy_input_fn()
+The Estimators API implements a basic training loop and provides functions
+to train and evaluate a model and use it for predictions. Estimators-based 
+models support distributed training on multiple servers (when using 
+`tf.estimator.train_and_evaluate()`). The Estimator API also forces the
+separation of data input pipeline and model. The prefered method to feed
+data is to use the `tf.data.Dataset` API but it is also possible to read
+Numpy arrays (by `tf.estimator.inputs.numpy_input_fn()`).
+"""    
 
 import types
 import numpy as np

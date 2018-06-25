@@ -1,16 +1,11 @@
-'''A MNIST classifier using the tf.estimator.train_and_evaluate() function'''
+"""
+A MNIST classifier using the tf.estimator.train_and_evaluate() function
 
-# This implementation creates a `tf.estimator.Estimator`, train_spec and eval_spec and 
-# than calls `tf.estimator.train_and_evaluate()` that trains and evaluates the model.
-# This utility function supports local and distributed configurations. For further infos
-# see: https://www.tensorflow.org/api_docs/python/tf/estimator/train_and_evaluate
+The function `tf.estimator.train_and_evaluate` trains and evaluates a model by 
+using a given Estimator. It provides consistent behavior for both local and 
+distributed training.
 
-# A `tf.estimator.inputs.numpy_input_fn` is used to create an input function that feeds 
-# numpy arrays into the model. The alternative would be to use the Dataset API.
-
-# The function `tf.estimator.train_and_evaluate()` is implemented in tensorflow/python/estimator/training.py
-# It delegates all interesting work to `_TrainingExecutor.run()`. In the non-distributed case this delegates
-# to _TrainingExecutor.run_local(). 
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -108,8 +103,7 @@ def network(x):
 
         drop1 = layers.dropout(
             fc1,
-            #keep_prob=keep_prob,
-            keep_prob=1.0, # TODO
+            keep_prob=1.0, 
             scope='drop1')
 
         logits = layers.fully_connected(drop1, 

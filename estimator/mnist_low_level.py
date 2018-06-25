@@ -1,9 +1,11 @@
-'''A MNIST classifier using the TensorFlow low-level API.'''
+"""
+A MNIST classifier using the TensorFlow low-level API.
 
-# Nothing really interesting here. This implentation serves as a baseline to 
-# compare the other implementations in terms of complexity and functionality.
-# The low-level API offers a maximum of flexibility. The disadvantage is that
-# a lot of boiler-plate must be written. 
+Nothing really interesting here. This implentation serves as a baseline to 
+compare the other implementations in terms of complexity and functionality.
+The low-level API gives you a maximum of flexibility. The disadvantage is of
+course that you need to implement all the boiler-plate code youtself.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
