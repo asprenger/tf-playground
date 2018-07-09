@@ -1,10 +1,16 @@
 '''A distributed MNIST classifier using the TensorFlow low-level API.'''
 
+import time
 import argparse
 import sys
 import tensorflow as tf
 import tensorflow.contrib.layers as layers
 from tensorflow.examples.tutorials.mnist import input_data
+from tensorflow.python.training import session_run_hook
+
+class MyHook(session_run_hook.SessionRunHook):
+  def end(self, session):
+    print('GOOD BUY')
 
 FLAGS = None
 
@@ -78,6 +84,11 @@ def main(_):
                            job_name=FLAGS.job_name, # 'ps' or 'worker'
                            task_index=FLAGS.task_index)
 
+  queues = []
+  for i in range(len(worker_hosts)):
+    print('Create queue%d' % i)
+    queues.append(tf.FIFOQueue(1, tf.int32, shared_name="queue%d" % i))
+
   if FLAGS.job_name == "ps":
     server.join()
 
@@ -105,9 +116,10 @@ def main(_):
       correct_prediction = tf.cast(tf.equal(tf.argmax(logits, 1), y), tf.float32)
       accuracy = tf.reduce_mean(correct_prediction)
 
+      signal_termination_op = queues[FLAGS.task_index].enqueue(1)
 
     # The StopAtStepHook handles stopping after running given steps.
-    hooks = [tf.train.StopAtStepHook(last_step=1000)]
+    hooks = [tf.train.StopAtStepHook(last_step=500)]
 
     # The MonitoredTrainingSession takes care of session initialization,
     # restoring from a checkpoint, saving to a checkpoint, and closing when 
@@ -119,7 +131,7 @@ def main(_):
                                            checkpoint_dir=FLAGS.log_dir,
                                            hooks=hooks) as mon_sess:
 
-      i = 0 # TODO rename with 'step'
+      step = 0
       while not mon_sess.should_stop():
         
         batch = mnist.train.next_batch(50)
@@ -128,13 +140,14 @@ def main(_):
         feed_dict = { x: batch[0], y: batch[1], keep_prob: 0.5 }
         mon_sess.run(train_op, feed_dict=feed_dict)
 
-        if i % 50 == 0 and i > 0:
+        # Calculate train accuracy
+        if step % 50 == 0 and step > 0 and not mon_sess.should_stop():
           feed_dict = { x: batch[0], y: batch[1], keep_prob: 1.0 }
           train_accuracy = mon_sess.run(accuracy, feed_dict=feed_dict)
           gstep = tf.train.global_step(mon_sess, global_step)
-          print('global_step %s, task:%d_step %d, training accuracy %g' % (gstep, FLAGS.task_index, i, train_accuracy))
+          print('step %d: task_index=%d global_step=%s train_acc=%f' % (step, FLAGS.task_index, gstep, train_accuracy))
 
-        i = i + 1
+        step = step + 1
 
 if __name__ == "__main__":
   parser = argparse.ArgumentParser()
