@@ -90,7 +90,8 @@ def main(_):
     queues.append(tf.FIFOQueue(1, tf.int32, shared_name="queue%d" % i))
 
   if FLAGS.job_name == "ps":
-    server.join()
+    #server.join()
+    time.sleep(2**16)
 
   elif FLAGS.job_name == "worker":
 
@@ -98,6 +99,10 @@ def main(_):
     device_fn = tf.train.replica_device_setter(worker_device="/job:worker/task:%d" % FLAGS.task_index, cluster=cluster)
 
     with tf.device(device_fn):
+
+      print('-'*20)
+      print(tf.get_default_graph().get_name_scope())
+      print('-'*20)
 
       print('Loading dataset')
       mnist = input_data.read_data_sets(FLAGS.data_dir)
@@ -133,19 +138,23 @@ def main(_):
 
       step = 0
       while not mon_sess.should_stop():
-        
+      
         batch = mnist.train.next_batch(50)
 
         # Run a training step asynchronously.
         feed_dict = { x: batch[0], y: batch[1], keep_prob: 0.5 }
         mon_sess.run(train_op, feed_dict=feed_dict)
 
+        gstep = tf.train.global_step(mon_sess, global_step)
+        print('step %d: task_index=%d global_step=%s' % (step, FLAGS.task_index, gstep))
+
+
         # Calculate train accuracy
-        if step % 50 == 0 and step > 0 and not mon_sess.should_stop():
-          feed_dict = { x: batch[0], y: batch[1], keep_prob: 1.0 }
-          train_accuracy = mon_sess.run(accuracy, feed_dict=feed_dict)
-          gstep = tf.train.global_step(mon_sess, global_step)
-          print('step %d: task_index=%d global_step=%s train_acc=%f' % (step, FLAGS.task_index, gstep, train_accuracy))
+#        if step % 50 == 0 and step > 0 and not mon_sess.should_stop():
+#          feed_dict = { x: batch[0], y: batch[1], keep_prob: 1.0 }
+#          train_accuracy = mon_sess.run(accuracy, feed_dict=feed_dict)
+#          gstep = tf.train.global_step(mon_sess, global_step)
+#          print('step %d: task_index=%d global_step=%s train_acc=%f' % (step, FLAGS.task_index, gstep, train_accuracy))
 
         step = step + 1
 
