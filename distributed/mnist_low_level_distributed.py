@@ -84,10 +84,6 @@ def main(_):
                            job_name=FLAGS.job_name, # 'ps' or 'worker'
                            task_index=FLAGS.task_index)
 
-  queues = []
-  for i in range(len(worker_hosts)):
-    print('Create queue%d' % i)
-    queues.append(tf.FIFOQueue(1, tf.int32, shared_name="queue%d" % i))
 
   if FLAGS.job_name == "ps":
     #server.join()
@@ -120,8 +116,6 @@ def main(_):
 
       correct_prediction = tf.cast(tf.equal(tf.argmax(logits, 1), y), tf.float32)
       accuracy = tf.reduce_mean(correct_prediction)
-
-      signal_termination_op = queues[FLAGS.task_index].enqueue(1)
 
     # The StopAtStepHook handles stopping after running given steps.
     hooks = [tf.train.StopAtStepHook(last_step=500)]
