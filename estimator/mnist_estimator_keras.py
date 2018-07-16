@@ -105,7 +105,6 @@ def main():
   data_dir = '/tmp/mnist'
   model_dir = '/tmp/model'
   batch_size = 128
-  train_epochs_before_evals = 1
 
   delete_dir(model_dir)
 
@@ -126,7 +125,7 @@ def main():
     ds = ds.cache()
     ds = ds.shuffle(buffer_size=50000)
     ds = ds.batch(batch_size)
-    ds = ds.repeat(train_epochs_before_evals)
+    ds = ds.repeat(1)
     return ds      
 
   def eval_input_fn():
@@ -135,7 +134,7 @@ def main():
     return ds
 
   print('Train model')
-  train_hooks = [tf.train.LoggingTensorHook(tensors=['learning_rate', 'cross_entropy', 'train_accuracy'], every_n_iter=100)]
+  train_hooks = [tf.train.LoggingTensorHook(tensors=['learning_rate', 'cross_entropy', 'train_accuracy'], every_n_iter=20)]
   estimator.train(input_fn=train_input_fn, hooks=train_hooks)
 
   print('Evaluate model')

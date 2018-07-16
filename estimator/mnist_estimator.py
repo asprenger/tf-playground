@@ -2,12 +2,12 @@
 A MNIST classifier using the TensorFlow Estimator API.
 
 The Estimators API implements a basic training loop and provides functions
-to train and evaluate a model and use it for predictions. Estimators-based 
-models support distributed training on multiple servers (when using 
+to train and evaluate a model and to generate predictions. Estimators-based 
+models support local and distributed training on multiple servers (when using 
 `tf.estimator.train_and_evaluate()`). The Estimator API also forces the
 separation of data input pipeline and model. The prefered method to feed
 data is to use the `tf.data.Dataset` API but it is also possible to read
-Numpy arrays (by `tf.estimator.inputs.numpy_input_fn()`).
+Numpy arrays (by using `tf.estimator.inputs.numpy_input_fn()`).
 """    
 
 import types
@@ -18,6 +18,8 @@ from tensorflow.examples.tutorials.mnist import input_data
 import dataset
 from utils import delete_dir
 
+# Enable logging so that the output from tf.train.LoggingTensorHook
+# is printed on the console
 tf.logging.set_verbosity(tf.logging.INFO)
 
 def build_model(x, hidden_size, keep_prob):
@@ -65,7 +67,7 @@ def build_model(x, hidden_size, keep_prob):
             scope='fc2')
         return logits
 
-def model_fn(features, labels, mode, params):
+def model_fn(features, labels, mode, params, config):
     '''Model function for Estimator.'''
 
     image = features
@@ -85,16 +87,14 @@ def model_fn(features, labels, mode, params):
     if mode == tf.estimator.ModeKeys.TRAIN:
         logits = build_model(image, params['hidden_size'], params['keep_rate'])
         loss = tf.losses.sparse_softmax_cross_entropy(labels=labels, logits=logits)
-
         optimizer = tf.train.AdamOptimizer(learning_rate=params["learning_rate"]) 
         train_op = optimizer.minimize(loss=loss, global_step=tf.train.get_global_step()) 
+        acc, acc_op = tf.metrics.accuracy(labels=labels, predictions=tf.argmax(logits, axis=1))
 
-        accuracy = tf.metrics.accuracy(labels=labels, predictions=tf.argmax(logits, axis=1))
-
-        # Name tensors to be logged with LoggingTensorHook.
+        # Name tensors that will be logged with tf.train.LoggingTensorHook
         tf.identity(params['learning_rate'], 'learning_rate')
         tf.identity(loss, 'cross_entropy')
-        tf.identity(accuracy[1], name='train_accuracy')
+        tf.identity(acc_op, name='train_accuracy')
 
         return tf.estimator.EstimatorSpec(
             mode=tf.estimator.ModeKeys.TRAIN,
@@ -105,7 +105,7 @@ def model_fn(features, labels, mode, params):
         logits = build_model(image, params['hidden_size'], 1.0)
         loss = tf.losses.sparse_softmax_cross_entropy(labels=labels, logits=logits)
 
-        acc, acc_op = tf.metrics.accuracy(labels=labels, predictions=tf.argmax(logits, axis=1, output_type=tf.int32))
+        acc, acc_op = tf.metrics.accuracy(labels=labels, predictions=tf.argmax(logits, axis=1))
         eval_metric_ops = { "accuracy": (acc, acc_op) }
 
         return tf.estimator.EstimatorSpec(
@@ -119,7 +119,6 @@ def main():
     data_dir = '/tmp/mnist'
     model_dir = '/tmp/model'
     batch_size = 128
-    train_epochs_before_evals = 1
     use_dataset = True
 
     delete_dir(model_dir)
@@ -131,7 +130,7 @@ def main():
             ds = ds.cache()
             ds = ds.shuffle(buffer_size=50000)
             ds = ds.batch(batch_size)
-            ds = ds.repeat(train_epochs_before_evals)
+            ds = ds.repeat(1)
             return ds      
 
         def eval_input_fn():
@@ -160,7 +159,7 @@ def main():
     estimator = tf.estimator.Estimator(model_fn=model_fn, model_dir=model_dir, params=model_params)
 
     print('Train model')
-    train_hooks = [tf.train.LoggingTensorHook(tensors=['learning_rate', 'cross_entropy', 'train_accuracy'], every_n_iter=100)]
+    train_hooks = [tf.train.LoggingTensorHook(tensors=['learning_rate', 'cross_entropy', 'train_accuracy'], every_n_iter=20)]
     estimator.train(input_fn=train_input_fn, hooks=train_hooks) 
 
     print('Evaluate model')
@@ -168,7 +167,7 @@ def main():
     print('Eval loss: %s' % eval_results['loss'])
     print('Eval accuracy: %s' % eval_results['accuracy'])
 
-    print('Do some predictions:')
+    print('Generate some predictions:')
     preds = estimator.predict(input_fn=eval_input_fn)
     for _ in range(5):
         print(preds.__next__()['class'])

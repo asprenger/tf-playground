@@ -1,7 +1,7 @@
 """
-A MNIST classifier using the tf.estimator.train_and_evaluate() function
+A MNIST classifier using the tf.estimator.train_and_evaluate() function.
 
-The function `tf.estimator.train_and_evaluate` trains and evaluates a model by 
+The `tf.estimator.train_and_evaluate` function trains and evaluates a model
 using a given Estimator. It provides consistent behavior for both local and 
 distributed training.
 
@@ -11,6 +11,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 import argparse
+import logging
 import sys
 import shutil
 import tempfile
@@ -21,44 +22,30 @@ from tensorflow.examples.tutorials.mnist import input_data
 from utils import delete_dir
 import dataset
 
-FLAGS = None
+# Enable logging so that the output from tf.train.LoggingTensorHook
+# is printed on the console
+tf.logging.set_verbosity(tf.logging.INFO)
+
+tf_logger = logging.getLogger('tensorflow')
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+for handler in tf_logger.handlers: handler.setFormatter(formatter)
 
 class TrainHook(tf.train.SessionRunHook):
-    '''Print training steps, for debugging'''
-    def __init__(self):
-        self.count = 0
+    '''Print start and end of training'''
     def after_create_session(self, session, coord):
-      print('Train Session created.')
-    def before_run(self, run_context):
-        self.count += 1
-        print('Train step %d' % self.count)
+      tf.logging.info('BEGIN TRAINING')
     def end(self, session):
-      print('End train Session')    
+      tf.logging.info('END TRAINING')
 
 class EvalHook(tf.train.SessionRunHook):
-    '''Print eval steps, for debugging'''
-    def __init__(self):
-        self.count = 0
+    '''Print start and end of evaluation'''
     def after_create_session(self, session, coord):
-      print('Eval Session created.')    
-    def before_run(self, run_context):
-        self.count += 1
-        print('Eval step %d' % self.count)
+      tf.logging.info('BEGIN EVALUATION')
     def end(self, session):
-      print('End eval Session')    
-
-    
-class MyExporter(tf.estimator.Exporter):
-    def __init__(self):
-        self._name = 'foo'
-    @property
-    def name(self):
-        return self._name
-    def export(self, estimator, export_path, checkpoint_path, eval_result, is_the_final_export):
-        print('EVAL RESULT', eval_result)
+      tf.logging.info('END EVALUATION')
 
 def build_model(x, hidden_size, keep_prob):
-    print('BUILD MODEL(x=%s, hidden_size=%d, keep_prob=%f)' % (x.shape, hidden_size, keep_prob))
+    tf.logging.info('build_model(x=%s, hidden_size=%d, keep_prob=%f)' % (x.shape, hidden_size, keep_prob))
     with tf.variable_scope("model"):
         x_image = tf.reshape(x, [-1, 28, 28, 1])
         conv1 = layers.convolution2d(x_image,
@@ -151,22 +138,20 @@ def model_fn(features, labels, mode, params):
             loss=loss,
             eval_metric_ops=eval_metric_ops)
 
-def main(_):
+def main():
 
     data_dir = '/tmp/mnist'
     model_dir = '/tmp/model'
     batch_size = 128
-    train_epochs_before_evals = 1
-    train_max_steps = 500
 
-    delete_dir(FLAGS.model_dir)
+    delete_dir(model_dir)
 
     def train_input_fn():
         ds = dataset.train(data_dir)
         ds = ds.cache()
         ds = ds.shuffle(buffer_size=50000)
         ds = ds.batch(batch_size)
-        ds = ds.repeat(train_epochs_before_evals)
+        ds = ds.repeat(1)
         return ds      
 
     def eval_input_fn():
@@ -174,32 +159,27 @@ def main(_):
         ds = ds.batch(batch_size)
         return ds
 
+    # Stop training after `max_steps` steps otherwise training would continue forever.
+    train_hooks = [TrainHook(), tf.train.LoggingTensorHook(tensors=['learning_rate', 'cross_entropy', 'train_accuracy'], every_n_iter=20)]
     train_spec = tf.estimator.TrainSpec(
         input_fn=train_input_fn,
-        max_steps=train_max_steps,
-        hooks=[TrainHook()]
+        max_steps=460,
+        hooks=train_hooks
     )
 
+    eval_hooks = [EvalHook()]
     eval_spec = tf.estimator.EvalSpec(
         input_fn=eval_input_fn,
         steps=None, # evaluates until input_fn raises an EOF exception
-        exporters=[MyExporter()],
-        hooks=[EvalHook()]
+        #exporters=[EvalResultExporter()],
+        hooks=eval_hooks
     )
     
     model_params = {'learning_rate': 1e-4, 'hidden_size': 512, 'keep_rate': 0.5}
-    estimator = tf.estimator.Estimator(model_fn=model_fn, model_dir=FLAGS.model_dir, params=model_params)
+    estimator = tf.estimator.Estimator(model_fn=model_fn, model_dir=model_dir, params=model_params)
 
-    tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)
-
+    eval_result = tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)
+    tf.logging.info('Evaluation result: %s', str(eval_result))
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--data_dir', type=str,
-                      default='/tmp/tensorflow/mnist/input_data',
-                      help='Directory for storing input data')
-    parser.add_argument('--model_dir', type=str,
-                  default='/tmp/tensorflow/mnist/model',
-                  help='Directory for storing model checkpoints')
-    FLAGS, unparsed = parser.parse_known_args()
-    tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
+    main()
