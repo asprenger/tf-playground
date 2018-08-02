@@ -19,7 +19,6 @@ import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.layers as layers
 from tensorflow.examples.tutorials.mnist import input_data
-from utils import delete_dir
 import dataset
 
 # Enable logging so that the output from tf.train.LoggingTensorHook
@@ -43,6 +42,9 @@ class EvalHook(tf.train.SessionRunHook):
       tf.logging.info('BEGIN EVALUATION')
     def end(self, session):
       tf.logging.info('END EVALUATION')
+
+def delete_dir(path):
+    shutil.rmtree(path, ignore_errors=True)
 
 def build_model(x, hidden_size, keep_prob):
     tf.logging.info('build_model(x=%s, hidden_size=%d, keep_prob=%f)' % (x.shape, hidden_size, keep_prob))

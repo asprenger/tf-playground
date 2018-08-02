@@ -1,7 +1,23 @@
 
 # Distributed training
 
-[mnist_low_level_distributed.py](mnist_low_level_distributed.py) implements distributed training with *data parallelism* and *asynchronous parameter updates*. In TensorFlow terminology data parallelism is called *between-graph replication*. The script implements the approach described in [Distributed TensorFlow](https://www.tensorflow.org/deploy/distributed).
+## Relevant TensorFlow source files
+
+[estimator.py](tensorflow/python/estimator/estimator.py):
+ * tf.estimator.Estimator
+
+[training.py](tensorflow/python/estimator/training.py):
+ * tf.estimator.train_and_evaluate
+
+[monitored_session.py](tensorflow/python/training/monitored_session.py):
+ * tf.train.MonitoredTrainingSession
+ * tf.train.MonitoredSession
+
+## Low level distributed training
+
+[mnist_low_level_distributed.py](mnist_low_level_distributed.py) implements distributed training with *data parallelism* 
+and *asynchronous parameter updates*. In TensorFlow terminology data parallelism is called *between-graph replication*. 
+The script implements the approach described in [Distributed TensorFlow](https://www.tensorflow.org/deploy/distributed).
 
 To run the example on a local machine with a parameter server and two workers execute the following commands:
 
@@ -26,18 +42,24 @@ The chief worker also manages failures, ensuring fault tolerance if a worker or 
 fails it will contact the parameter servers and continue as before because a worker is effectively stateless. If a 
 parameter server dies, the chief worker recovers from the last checkpoint after a new parameter server joins the 
 system. If the chief worker itself dies, training will need to be restarted from the most recent checkpoint. Most of 
-the functionality is provided by [tf.train.MonitoredTrainingSession](https://www.tensorflow.org/api_docs/python/tf/train/MonitoredTrainingSession) and [tf.train.MonitoredSession](https://www.tensorflow.org/api_docs/python/tf/train/MonitoredSession).
+the functionality is provided by [tf.train.MonitoredTrainingSession](https://www.tensorflow.org/api_docs/python/tf/train/MonitoredTrainingSession) 
+and [tf.train.MonitoredSession](https://www.tensorflow.org/api_docs/python/tf/train/MonitoredSession).
 
-One disadvantage of Distributed TensorFlow is that you have to manage the starting and stopping of processes 
-explicitly. This means keeping track of the IP addresses and ports of all your TensorFlow servers in your program, 
-and starting and stopping those servers manually. You probably want to use some kind of resource manager like:
 
- * YARN
- * Spark
- * Kubernetes
- * Mesos
+## Using tf.estimator.train_and_evaluate
 
-# Distributed training with tf.estimator.train_and_evaluate
+[mnist_train_and_evaluate.py](mnist_train_and_evaluate.py) creates an estimator and calls `tf.estimator.train_and_evaluate`. 
+This helper function coordinates the training and evaluation of the model. The function provides consistent behavior for both 
+local and distributed training. It only supports data parallelism (between-graph replication) and asynchronous parameter 
+update for the distributed configuration.
+
+### Local training
+
+Run local training:
+
+    python mnist_train_and_evaluate.py
+
+### Distributed training
 
 Start parameter server:
 
@@ -83,3 +105,19 @@ Start evaluator:
         "task": {"type": "evaluator", "index": 0}
     }' python mnist_train_and_evaluate.py
 
+
+# Process management
+
+TensorFlow provides only the basic functionality that is necessary for distributed training. The problem is that you 
+have to manage the starting and stopping of processes yourself. This means keeping track of the IP addresses and 
+ports of all TensorFlow servers in your cluster, and starting and stopping those servers manually. To do this in an
+automatic fashion you will probably use a resource management framework like:
+
+ * YARN
+ * Kubernetes
+ * Mesos
+
+Another option to manage process lifecycles would be Spark. The advantage of Spark is that it is able to run on the
+mentioned resource management frameworks and serves as a kind of abstraction layer.
+
+ 
