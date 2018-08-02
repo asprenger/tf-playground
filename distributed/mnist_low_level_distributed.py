@@ -3,6 +3,7 @@
 import time
 import argparse
 import sys
+import shutil
 import tensorflow as tf
 import tensorflow.contrib.layers as layers
 from tensorflow.examples.tutorials.mnist import input_data
@@ -84,22 +85,21 @@ def main(_):
                            job_name=FLAGS.job_name, # 'ps' or 'worker'
                            task_index=FLAGS.task_index)
 
-
   if FLAGS.job_name == "ps":
     #server.join()
     time.sleep(2**16)
 
   elif FLAGS.job_name == "worker":
 
+    if FLAGS.task_index == 0:
+      # If the checkpoint directory contains a checkpoint the chief worker
+      # would restore from the checkpoint
+      shutil.rmtree(FLAGS.log_dir, ignore_errors=True)
+
     # The device function assigns each node in the graph to a device.
     device_fn = tf.train.replica_device_setter(worker_device="/job:worker/task:%d" % FLAGS.task_index, cluster=cluster)
 
     with tf.device(device_fn):
-
-      print('-'*20)
-      print(tf.get_default_graph().get_name_scope())
-      print('-'*20)
-
       print('Loading dataset')
       mnist = input_data.read_data_sets(FLAGS.data_dir)
       print('%d train images' % mnist.train.num_examples)
@@ -118,7 +118,7 @@ def main(_):
       accuracy = tf.reduce_mean(correct_prediction)
 
     # The StopAtStepHook handles stopping after running given steps.
-    hooks = [tf.train.StopAtStepHook(last_step=500)]
+    hooks = [tf.train.StopAtStepHook(last_step=1000)]
 
     # The MonitoredTrainingSession takes care of session initialization,
     # restoring from a checkpoint, saving to a checkpoint, and closing when 
@@ -130,27 +130,36 @@ def main(_):
                                            checkpoint_dir=FLAGS.log_dir,
                                            hooks=hooks) as mon_sess:
 
-      step = 0
+      local_step = 0
       while not mon_sess.should_stop():
       
         batch = mnist.train.next_batch(50)
 
-        # Run a training step asynchronously.
-        feed_dict = { x: batch[0], y: batch[1], keep_prob: 0.5 }
-        mon_sess.run(train_op, feed_dict=feed_dict)
+        try:
 
-        gstep = tf.train.global_step(mon_sess, global_step)
-        print('step %d: task_index=%d global_step=%s' % (step, FLAGS.task_index, gstep))
+          # Run a training step
+          feed_dict = { x: batch[0], y: batch[1], keep_prob: 0.5 }
+          mon_sess.run(train_op, feed_dict=feed_dict)
 
+          gstep = tf.train.global_step(mon_sess, global_step)
+          print('local_step %d: task_index=%d global_step=%s' % (local_step, FLAGS.task_index, gstep))
 
-        # Calculate train accuracy
-#        if step % 50 == 0 and step > 0 and not mon_sess.should_stop():
-#          feed_dict = { x: batch[0], y: batch[1], keep_prob: 1.0 }
-#          train_accuracy = mon_sess.run(accuracy, feed_dict=feed_dict)
-#          gstep = tf.train.global_step(mon_sess, global_step)
-#          print('step %d: task_index=%d global_step=%s train_acc=%f' % (step, FLAGS.task_index, gstep, train_accuracy))
+          # Calculate train accuracy from time to time
+          #if local_step % 50 == 0 and local_step > 0 and not mon_sess.should_stop():
+          #  feed_dict = { x: batch[0], y: batch[1], keep_prob: 1.0 }
+          #  train_accuracy = mon_sess.run(accuracy, feed_dict=feed_dict)
+          #  gstep = tf.train.global_step(mon_sess, global_step)
+          #  print('local_step %d: task_index=%d global_step=%s train_acc=%f' % (local_step, FLAGS.task_index, gstep, train_accuracy))
 
-        step = step + 1
+          local_step = local_step + 1
+
+        except RuntimeError as e:
+          # It happens frequently that we start some computation on the session that has just 
+          # been stopped and a RuntimeError is raised. This happens asynchronously and checking
+          # `mon_sess.should_stop()` before starting the computation does not work.
+          if not mon_sess.should_stop():
+            raise
+
 
 if __name__ == "__main__":
   parser = argparse.ArgumentParser()
