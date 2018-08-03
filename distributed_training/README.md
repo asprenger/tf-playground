@@ -3,15 +3,15 @@
 
 ## Relevant TensorFlow source files
 
-[estimator.py](tensorflow/python/estimator/estimator.py):
- * tf.estimator.Estimator
+ * [estimator.py](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/learn/python/learn/estimators/estimator.py):
+    * tf.estimator.Estimator
 
-[training.py](tensorflow/python/estimator/training.py):
- * tf.estimator.train_and_evaluate
+ * [training.py](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/estimator/training.py):
+    * tf.estimator.train_and_evaluate
 
-[monitored_session.py](tensorflow/python/training/monitored_session.py):
- * tf.train.MonitoredTrainingSession
- * tf.train.MonitoredSession
+ * [monitored_session.py](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/training/monitored_session.py):
+    * tf.train.MonitoredTrainingSession
+    * tf.train.MonitoredSession
 
 ## Low level distributed training
 
