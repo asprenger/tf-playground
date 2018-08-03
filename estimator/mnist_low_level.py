@@ -83,6 +83,8 @@ def main(_):
     print('%d train images' % mnist.train.num_examples)
     print('%d test images' % mnist.test.num_examples)
 
+    batch_size = 128
+    max_steps = 10000
     x = tf.placeholder(tf.float32, [None, 784])
     y = tf.placeholder(tf.int64, [None])
     logits, keep_prob = build_model(x)
@@ -95,23 +97,21 @@ def main(_):
     accuracy = tf.reduce_mean(correct_prediction)
 
     with tf.Session() as sess:
-
         sess.run(tf.global_variables_initializer())
 
-        for i in range(20000):
-
-            batch = mnist.train.next_batch(50)
-            feed_dict = { x: batch[0], y: batch[1], keep_prob: 0.2 }
+        for i in range(max_steps):
+            x_train, y_train = mnist.train.next_batch(batch_size)
+            feed_dict = { x: x_train, y: y_train, keep_prob: 0.2}
             sess.run(train_op, feed_dict=feed_dict)
 
             if i % 100 == 0 and i > 0:
-                feed_dict = { x: batch[0], y: batch[1], keep_prob: 1.0 }
-                train_accuracy = sess.run(accuracy, feed_dict=feed_dict)
-                print('step %d, training accuracy %g' % (i, train_accuracy))
+                feed_dict = { x: x_train, y: y_train, keep_prob: 1.0}
+                train_loss, train_acc = sess.run([loss, accuracy], feed_dict=feed_dict)
+                print('step %d: train_loss=%f train_acc=%g' % (i, train_loss, train_acc))
 
         feed_dict = { x: mnist.test.images, y: mnist.test.labels, keep_prob: 1.0 }
-        acc = sess.run(accuracy, feed_dict=feed_dict)
-        print('test accuracy %g' % acc)
+        eval_loss, eval_acc = sess.run([loss, accuracy], feed_dict=feed_dict)
+        print('eval_loss=%f eval_acc=%f ' % (i, eval_loss, eval_acc))
 
 
 if __name__ == '__main__':
@@ -121,4 +121,3 @@ if __name__ == '__main__':
                       help='Directory for storing input data')
   FLAGS, unparsed = parser.parse_known_args()
   tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
-
