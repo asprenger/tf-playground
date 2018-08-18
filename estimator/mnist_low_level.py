@@ -111,7 +111,7 @@ def main(_):
 
         feed_dict = { x: mnist.test.images, y: mnist.test.labels, keep_prob: 1.0 }
         eval_loss, eval_acc = sess.run([loss, accuracy], feed_dict=feed_dict)
-        print('eval_loss=%f eval_acc=%f ' % (i, eval_loss, eval_acc))
+        print('eval_loss=%f eval_acc=%f ' % (eval_loss, eval_acc))
 
 
 if __name__ == '__main__':
