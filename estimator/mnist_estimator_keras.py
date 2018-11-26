@@ -134,7 +134,7 @@ def main():
     return ds
 
   print('Train model')
-  train_hooks = [tf.train.LoggingTensorHook(tensors=['learning_rate', 'cross_entropy', 'train_accuracy'], every_n_iter=20)]
+  train_hooks = [tf.train.LoggingTensorHook(tensors=[z'cross_entropy', 'train_accuracy'], every_n_iter=20)]
   estimator.train(input_fn=train_input_fn, hooks=train_hooks)
 
   print('Evaluate model')
