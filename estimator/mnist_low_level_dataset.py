@@ -16,6 +16,7 @@ import tempfile
 import tensorflow as tf
 import tensorflow.contrib.layers as layers
 from tensorflow.examples.tutorials.mnist import input_data
+import dataset
 
 FLAGS = None
 
@@ -62,10 +63,9 @@ def build_model(x):
             activation_fn=tf.nn.relu, 
             scope='fc1')
 
-        keep_prob = tf.placeholder(tf.float32)
         drop1 = layers.dropout(
             fc1,
-            keep_prob=keep_prob,
+            keep_prob=0.2,
             scope='drop1')
 
         logits = layers.fully_connected(drop1, 
@@ -73,7 +73,7 @@ def build_model(x):
             activation_fn=None, 
             scope='fc2')
 
-        return logits, keep_prob
+        return logits
 
 
 def main(_):
@@ -85,33 +85,29 @@ def main(_):
 
     batch_size = 128
     max_steps = 10000
-    x = tf.placeholder(tf.float32, [None, 784])
-    y = tf.placeholder(tf.int64, [None])
-    logits, keep_prob = build_model(x)
+
+    train_ds = dataset.train('/tmp/mnist')
+    train_ds = train_ds.shuffle(buffer_size=50000)
+    train_ds = train_ds.batch(batch_size)
+    train_ds = train_ds.repeat(1)
+    
+    x, y = train_ds.make_one_shot_iterator().get_next()
+    logits = build_model(x)
     
     cross_entropy = tf.losses.sparse_softmax_cross_entropy(labels=y, logits=logits)
     loss = tf.reduce_mean(cross_entropy)
     train_op = tf.train.AdamOptimizer(1e-4).minimize(loss)
 
-    correct_prediction = tf.cast(tf.equal(tf.argmax(logits, 1), y), tf.float32)
+    correct_prediction = tf.cast(tf.equal(tf.argmax(logits, 1), tf.cast(y, tf.int64)), tf.float32)
     accuracy = tf.reduce_mean(correct_prediction)
 
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())
 
         for i in range(max_steps):
-            x_train, y_train = mnist.train.next_batch(batch_size)
-            feed_dict = { x: x_train, y: y_train, keep_prob: 0.2}
-            sess.run(train_op, feed_dict=feed_dict)
-
-            if i % 100 == 0 and i > 0:
-                feed_dict = { x: x_train, y: y_train, keep_prob: 1.0}
-                train_loss, train_acc = sess.run([loss, accuracy], feed_dict=feed_dict)
-                print('step %d: train_loss=%f train_acc=%g' % (i, train_loss, train_acc))
-
-        feed_dict = { x: mnist.test.images, y: mnist.test.labels, keep_prob: 1.0 }
-        eval_loss, eval_acc = sess.run([loss, accuracy], feed_dict=feed_dict)
-        print('eval_loss=%f eval_acc=%f ' % (eval_loss, eval_acc))
+            _, train_loss, train_acc = sess.run([train_op, loss, accuracy])
+            if i % 10 == 0:
+                print('step %d: train_loss=%f train_acc=%g' % (i, train_loss, train_acc))            
 
 
 if __name__ == '__main__':
